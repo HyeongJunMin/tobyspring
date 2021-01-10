@@ -1,10 +1,12 @@
-package domain;
+package toby.domain;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 @Getter
 @Setter
+@ToString
+@NoArgsConstructor
+@AllArgsConstructor
 public class User {
   private String id;
   private String name;
