@@ -602,6 +602,50 @@
             }            
           }
           ```
+
+### 6. 스프링의 JdbcTemplate
+> 스프링은 다양한 템플릿/콜백 기술을 제공한다.
+> 
+> 그 중 JdbdTemplate을 사용해본다.
+> 
+> ```
+> public class UserDao {
+>   private JdbcTemplate jdbcTemplate;
+>   public void setDataSource(DataSource dataSource) {
+>     this.jdbcTemplate = new JdbcTemplate(dataSource);
+>     this.dataSource = dataSource;
+>   }
+> ```
+1. update()
+    - deleteAll()에 적용
+    - ```
+      public void deleteAll() throws SQLException {
+        // PreparedStatementCreator를 활용한 deleteAll()
+        this.jdbcTemplate.update(connection -> connection.prepareStatement("delete from users"));
+        // this.jdbcTemplate.update(
+        //     new PreparedStatementCreator() {
+        //       @Override
+        //       public PreparedStatement createPreparedStatement(Connection connection) throws SQLException {
+        //         return connection.prepareStatement("delete from users");
+        //       }
+        //     }
+        // );
+        // 내장 콜백을 사용하는 update()로 변경한 deleteAll()
+        this.jdbcTemplate.update("delete from users");
+      }
+      ```
+    - add()에 적용
+    - ```
+      public void add(User user) throws ClassNotFoundException, SQLException {
+        this.jdbcTemplate.update("insert into users(id, name, password) values(?, ?, ?)"
+            , user.getId(), user.getName(), user.getPassword());
+      }
+      ```
+2. queryForInt()
+    - 콜백이 2개인 .query() 메서드 활용
+    - 
+
+
 ### 6. 정리
 - 
 ```
