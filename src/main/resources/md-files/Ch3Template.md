@@ -641,23 +641,220 @@
             , user.getId(), user.getName(), user.getPassword());
       }
       ```
-2. queryForInt()
+2. queryForInt() - 3.2.2 deprecated
     - 콜백이 2개인 .query() 메서드 활용
-    - 
+        - 첫 번째 콜백(PreparedStatementCreator) : statement 생성
+        - 두 번째 콜백(ResultSetExtractor) : ResultSet으로 부터 값 추출(제너릭)
+    - ```
+      public int getCount() {
+        return this.jdbcTemplate.query(new PreparedStatementCreator() {
+          @Override
+          public PreparedStatement createPreparedStatement(Connection connection) throws SQLException {
+            return connection.prepareStatement("select count(*) from users");
+          }
+        }, new ResultSetExtractor<Integer>() {
+          @Override
+          public Integer extractData(ResultSet resultSet) throws SQLException, DataAccessException {
+            resultSet.next();
+            return resultSet.getInt(1);
+          }
+        });
+      }
+      ```
+    - queryForInt() 활용
+    - ```
+      // queryForInt는 spring 3.2.2에서 deprecated. 현재는 queryForObject 뿐
+      public int getCount() {
+        return jdbcTemplate.queryForObject("select count(*) from users", Integer.class);
+      }
+      ```
+3. queryForObject()
+    - RowMapper : ResultSet의 로우 하나를 매핑하기 위해 사용
+    - 한 개의 결과만 얻을 것으로 기대한다.
+        - single일까 unique일까?
+        - unique!
+        - 2개 이상이면? IncorrectResultSizeDataAccessException 발생 하면서 실패
+        - 0개면? EmptyResultDataAccessException 발생 하면서 실패
+    - ```
+      public User get(String id) throws SQLException {
+        return jdbcTemplate.queryForObject("select * from users where id = ?",
+          // SQL에 바인딩 할 파라미터 값. 가변인자 대신 배열 사용
+          new Object[] { id },
+          // ResultSet 한 로우의 결과를 오브젝트에 매핑해주는 RowMapper콜백
+          new RowMapper<User>() {
+            public User mapRow(ResultSet rs, int rowNum) throws SQLException {
+              User user = new User();
+              user.setId(rs.getString("id"));
+              user.setName(rs.getString("name"));
+              user.setPassword(rs.getString("password"));
+              return user;
+            }
+          });
+      }
+      ```
+4. query()
+    - public \<T> List\<T> query(String sql, RowMapper<T> rowMapper)
+    - 기능 정의와 테스트 작성
+        - 모든 사용자 정보를 가져오기 위한 getAll은 어떻게?
+        - id순으로 정렬해서 가져오도록.
+    - 테스트코드
+    - ```
+      @Test
+      public void getAll() throws Exception {
+        userDao.deleteAll();
+        User user1 = new User("001", "name1", "password1");
+        User user2 = new User("002", "name2", "password2");
+        User user3 = new User("003", "name3", "password3");
+        List<User> originUserList = Arrays.asList(user1, user2, user3);
+        for(User user : originUserList) { userDao.add(user); }
+             List<User> userList = userDao.getAll();
+             assertThat(userList.size()).isEqualTo(originUserList.size());
+        for(int i = 0; i < userList.size(); i++) {
+          checkSameUser(originUserList.get(i), userList.get(i));
+        }
+      }
+      private void checkSameUser(User originUser, User resultUser) {
+        assertThat(originUser.getId()).isEqualTo(resultUser.getId());
+        assertThat(originUser.getName()).isEqualTo(resultUser.getName());
+        assertThat(originUser.getPassword()).isEqualTo(resultUser.getPassword());
+      }
+      ```
+    - UserDao 코드
+    - ```
+      public List<User> getAll() {
+        return jdbcTemplate.query("select * from users order by id",
+          (rs, rowNum) -> {
+            User user = new User();
+            user.setId(rs.getString("id"));
+            user.setName(rs.getString("name"));
+            user.setPassword(rs.getString("password"));
+            return user;
+          });
+      }
+      ```
+    - 테스트 보완
+        - 네거티브 테스트 필요
+        - 아래처럼 빈 테이블의 결과는 size가 0인 List이다 라고 알 수 있는 테스트가 있으면, getAll메서드가 내부적으로 어떻게 작동하는지 알 필요도 없어지는 장점이 있다.
+        - ```
+          @Test
+          public void getAllFromEmptyTable() throws Exception {
+            userDao.deleteAll();
+            List<User> userList = userDao.getAll();
+            assertThat(userList.size()).isEqualTo(0);
+          }
+          ```
+5. 재사용 가능한 콜백의 분리
+    - DI를 위한 코드 정리
+        - ```
+          // 불필요한 DataSource, JdbcContext 제거
+          public class UserDao {        
+            private JdbcTemplate jdbcTemplate;        
+            public UserDao(DataSource dataSource) {
+              this.jdbcTemplate = new JdbcTemplate(dataSource);
+          }
+          ```
+    - 중복 제거
+        - get(), getAll()에 RowMapper의 내용이 똑같음
+        - 단 두개의 중복이라 해도 언제 어떻게 확장이 필요해질지 모르니 제거하는게 좋다.
+        - ```
+          // 중복 제거한 rowMapper와 get()메서드
+          public User get(String id) {
+            return jdbcTemplate.queryForObject("select * from users where id = ?",
+                    new Object[] { id },
+                    getUserMapper());
+          }          
+          private RowMapper<User> getUserMapper() {
+            return (resultSet, i) -> {
+              User user = new User();
+              user.setId(resultSet.getString("id"));
+              user.setName(resultSet.getString("name"));
+              user.setPassword(resultSet.getString("password"));
+              return user;
+            };
+          }
+          ```
+    - 템플릿/콜백 패턴과 UserDao
+        - 템플릿/콜백 패턴과 DI를 이용해 깔끔해진 UserDao 클래스
+        - 응집도 높다 : 테이블과 필드정보가 바뀌면 UserDao의 거의 모든 코드가 함께 바뀐다
+        - 결합도 낮다 : JDBC API 활용방식, 예외처리, 리소스 반납, DB 연결 등에 대한 책임과 관심은 JdbcTemplate에 있기 때문에 변경이 일어난다 해도 UserDao의 코드에는 영향을 주지 않는다.
+        - 추가 개선 사항
+            - userMapper를 독립된 빈으로 만들어서 분리한다.
+            - SQL문장을 외부 리소스에 담고 읽어와서 사용한다. => 쿼리를 최적화하는 경우에 UserDao 코드에 손 댈 필요 없다. 
+        - ```
+          public class UserDao {          
+            private JdbcTemplate jdbcTemplate;          
+            public UserDao(DataSource dataSource) {
+              this.jdbcTemplate = new JdbcTemplate(dataSource);
+            }          
+            public void add(final User user) {
+              this.jdbcTemplate.update("insert into users(id, name, password) values(?, ?, ?)"
+                  , user.getId(), user.getName(), user.getPassword());
+            }          
+            public User get(String id) {
+              return jdbcTemplate.queryForObject("select * from users where id = ?"
+                      ,new Object[] { id }, getUserMapper());
+            }
+            private RowMapper<User> getUserMapper() {
+              return (resultSet, i) -> {
+                User user = new User();
+                user.setId(resultSet.getString("id"));
+                user.setName(resultSet.getString("name"));
+                user.setPassword(resultSet.getString("password"));
+                return user;
+              };
+            }
+            public User getUserByName(String name) {
+              return jdbcTemplate.queryForObject("select * from users where name = ?"
+                       , new Object[] { name }, getUserMapper());
+            }          
+            public void deleteAll() {
+              this.jdbcTemplate.update("delete from users");
+            }          
+            public int getCount() {
+              return jdbcTemplate.queryForObject("select count(*) from users", Integer.class);
+            }          
+            public List<User> getAll() {
+              return jdbcTemplate.query("select * from users order by id", getUserMapper());
+            }          
+          }
+          ```
 
 
-### 6. 정리
-- 
-```
-1. 
-2. 
-  > 
-3. 
-4. 
-``` 
-- 
+### 7. 정리
+- 예외처리와 안전한 리소스 반환을 보장해주는 DAO 코드를 만들었다.
+- 객체지향 설계 원리, 디자인 패턴, DI 등을 적ㅇ요해서 깔끔하고 유연하며 단순한 코드로 만들었다.
+- JDBC 처럼 예외발생 가능성이 있으며 공유 리소스 반환이 필요한 코드는 반드시 try-catch-finally 블록으로 관리해야 한다.
+- 전략 패턴
+    - 로직에 반복이 있으면서 그 중 일부(전략)만 바뀌고 일부(컨텍스트)는 바뀌지 않는다면 전략 패턴을 적용한다.
+    ```
+    1. 한 애플리케이션 안에서 여러 전략을 동적으로 구성하고 사용해야 한다면 컨텍스트를 이용하는 클라이언트 메서드에서 직접 전략을 정의하고 제공하도록 만든다.
+    2. 익명 내부 클래스를 사용해서 전략 오브젝트를 구현하면 편리하다.
+    3. 컨텍스트가 하나 이상의 클라이언트 객체에서 사용된다면 클래스를 분리해서 공유하도록 만든다.
+    4. 컨텍스트는 별도 빈으로 등록해서 DI 받거나 클라이언트 클래스에서 직접 생성해 사용한다.
+    ``` 
+- 템플릿 콜백 패턴
+    - 단일 전략 메서드를 갖는 전략 패턴이면서, 익명 내부 클래스를 사용해서 매번 전략을 새로 만들어 사용하고, 컨텍스트 호출과 동시에 전략 DI를 수행하는 방식
+    - 콜백 : 다시 불려지는 기능 이라는 의미
+    ```
+    1. 콜백 코드에도 일정한 패턴이 반복된다면 콜백을 템플릿에 넣고 재활용 하는 것이 편리하다.
+    2. 템플릿과 콜백의 타입이 다양하게 바뀔 수 있다면 제너릭을 이용한다.
+    3. 스프링은 JDBC 코드 작성을 위해 JdbcTemplate을 기반으로 하는 다양한 템플릿과 콜백을 제공한다.
+    4. 템플릿은 한 번에 하나 이상의 콜백을 사용할 수도 있고, 하나의 콜백을 여러번 호출할 수 있다.
+    5. 템플릿/콜백을 설계할 때에는 템플릿과 콜백 사이에 주고받는 정보에 관심을 두어야 한다.
+    ```
+- 템플릿/콜백은 스프링이 객체지향 설계와 프로그래밍에 얼마나 가치를 두고 있는지를 잘 보여주는 예다.
+    - 얼마나 유연하고 변경이 용이하게 만들고자 하는지를 잘 보여주는 예다.
+    - 이 챕터에서는 추상화(템플릿), 캡슐화(DI)를 통해서
+    - DI가 캡슐화? -> DataSource가 갖는 세세한 정보를 DataSource를 직접 사용하는 UserDao는 알 필요가 없기 때문
+- 배운 내용 정리
+    - 이 책이 나온 당시에는 JdbcTemplate이 많이 사용됐었나 보다.
+    - 예외처리, 자원관리 등 변하지 않는 부분을 메서드(jdbcContextWithStatementStrategy)로 빼고
+    - 메서드로 추출한 내용을 다른 클래스에서도 쓸 수 있도록 별도 클래스(JdbcContext)로 분리하는 과정을 보면서
+    - 중복된 내용들을 어떻게 제거해서 깔끔하고 재사용하기 좋은 코드를 만든 결과를 확인하고
+    - 그 결과를 스프링이 어떻게 제공하는지 봤다.
+    - 비록 JdbcTemplate은 사용할 일이 없을 것 같지만, 스프링에 녹아있는 아이디어를 알게됐다.
 
-콜백 : 다시 불려지는 기능 이라는 의미
+
 
 ### 중첩 클래스의 종류
 - 스태틱 클래스(static class)
