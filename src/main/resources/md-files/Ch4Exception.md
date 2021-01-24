@@ -132,13 +132,33 @@ JdbcTemplate의 DataAccessException
 2. 런타임 예외로 SQLException을 포장
 ```
 1. JDBC의 한계
+    - JDBC 특
+        - JDBC 표준을 따른 DB 별 드라이버를 제공 
+        - 하지만 DB를 자유롭게 변경해서 사용할 수 있는 유연한 코드를 보장해주지는 못한다.
+        - 아래 2개는 DB를 자유롭게 변경하지 못하는 이유(비표준 SQL, DB 에러정보)
     - 비표준 SQL
+        - DB 별 SQL이 다른 부분
+        - DAO에 비표준 쿼리가 들어가면 DB 종속적 코드가 된다.
+        - DAO를 DB별로 만들거나... SQL을 외부로 독립시켜서 사용하거나... 
     - 호환성 없는 SQLException의 DB 에러정보
+        - DB마다 에러의 종류가 원인이 다르다. 
+        - 그래서 JDBC에서는 SQLException 하나로 처리한다.
+        - 그래도 getErrorCode하면 DB마다 다르다.
+        - SQLException만으로 DB에 독립적인 유연한 코드를 작성하는 것은 불가능에 가깝다.
 2. DB 에러 코드 매핑을 통한 전환
+    - 스프링은 DB별 에러 코드를 분류해서 스프링이 정의한 예외 클래스와 매핑했다.(에러 코드 매핑 파일 301p)
+    - JDK 1.6부터 문법오류, 제약조건 위반을 세분화
 3. DAO 인터페이스와 DataAccessException 계층구조
+    - 왜 스프링은 DataAccessException 계층구조를 이용해 기술에 독립적인 예외를 정의하고 사용하게 할까?
+    - 다양한 상황을 하나로 통합하기위해?
     - DAO 인터페이스와 구현의 분리
+        - DAO를 굳이 따로 만드는 이유? : 데이터 엑세스 로직을 담은 코드를 성격이 다른 코드들과 분리해 놓기 위해!
+        - 인터페이스 선언으로는 불충분하다. 왜? : 데이터 엑세스 기술이 달라지면 같은 상황이라도 다른 종류의 예외가 던져진다. -> 클라이언트가 DAO 기술에 의존적이 될 수 밖에 없다.
     - 데이터 액세스 예외 추상화와 DataAccessException 계층구조
+        - 그래서 스프링은 다양한 데이터 엑세스 기술을 사용할 떄 발생하는 예외들을 추상화해서 DataAccessException 계층구조 안에 정리했다.
+        - DataAccessException은 JPA, Hibernate, MyBatis 등 자바의 주요 데이터 엑세스 기술에서 발생할 수 있는 대부분의 예외를 추상화하고 있다.
 4. 기술에 독립적인 UserDao 만들기
+    - 인터페이스 적용
     - 테스트 보완
     - DataAccessException 활용 시 주의사항
 
