@@ -7,8 +7,8 @@ import org.junit.runner.RunWith;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.junit4.SpringRunner;
+import toby.common.exception.DuplicateUserIdException;
 import toby.domain.User;
 
 import java.sql.SQLException;
@@ -30,9 +30,7 @@ public class UserDaoTest {
     userDao = context.getBean("userDao", UserDao.class);
   }
 
-//  @Ignore
-  @Test
-  @Rollback(false)
+  @Test(expected = DuplicateUserIdException.class)
   public void add() throws SQLException, ClassNotFoundException {
     String userId = "id01";
     userDao.deleteAll();
