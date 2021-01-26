@@ -10,6 +10,8 @@
 > 2. 복구 가능성이 없으면 런타임 예외 방식으로 처리한다.
 >   - 적절한 의미를 갖는 예외로 변경해서 알리기(예외 전환)
 > ```
+> 
+> 예외를 기대하는 테스트를 만들 때, 추상화된 예외는 조심히 쓰세용 ^^
 
 ## 책 내용
 > JdbcTemplate을 적용하고 SQLException이 없어졌다. 왜일까?
@@ -159,9 +161,66 @@ JdbcTemplate의 DataAccessException
         - DataAccessException은 JPA, Hibernate, MyBatis 등 자바의 주요 데이터 엑세스 기술에서 발생할 수 있는 대부분의 예외를 추상화하고 있다.
 4. 기술에 독립적인 UserDao 만들기
     - 인터페이스 적용
+        - 추천하는 네이밍 규칙
+        - ```
+          interface UserDao { ... }
+          class UserDaoJpa implements UserDao { ... }
+          class UserDaoHibernate implements UserDao { ... }
+          ```
     - 테스트 보완
+        - DAO 기능 동작에만 관심이 있다면 UserDao 인터페이스로 받아서 테스트하는 편이 낫다.
+        - 특정 기술을 사용한(Jpa, Hibernate...) 구현 내용에 관심을 가지고 테스트 하려면 구현한 클래스 타입을 사용하는게 맞다.
+        - 여기서는 DAO 기능 동작에만 관심이 있다.
+        - 추가한 테스트 특징
+            - DuplicateKeyException이 DataAccessException의 서브클래스임을 확인할 수 있는 테스트
+            - 테스트를 만든 목적은 아래 DataAccessException 활용 시 주의사항
+        - ```
+          @Test(expected = DataAccessException.class)
+          public void addUsersHavingDuplicateKeyThrowsDataAccessException() {
+            addUsersHavingDuplicateKey();
+          }        
+          private void addUsersHavingDuplicateKey() {
+            User user = new User("duplicatedKey", "name1", "password1");
+            userDao.deleteAll();
+            userDao.add(user);
+            userDao.add(user);
+          }        
+          @Test(expected = DuplicateKeyException.class)
+          public void addUsersHavingDuplicateKeyThrowsDuplicateKeyException() {
+            addUsersHavingDuplicateKey();
+          }
+          ```
     - DataAccessException 활용 시 주의사항
-
+        - DataAccessException은 다양한 서브클래스 예외를 갖고있긴 한데 같은 상황이라도 기술마다 다른 서브예외를 던질 가능성이 높아요
+        - DataAccessException, DuplicateKeyException을 활용해서 사용한 데이터 엑세스 기술에 구애받지 않고 DAO의 정상작동을 보장하는 테스트라고 기대할 수도 있지만...
+        - DuplicateKeyException은 JDBC에서만 난다...
+            - Hibernate : ConstraintViolationException
+        - 이런 상황에 추상화된 공통 예외로 변환해주기는 하지만 완벽하다고 기대할 수는 없다.
+            - 추상화된 공통예외 ConstraintViolationException을 사용하면? 키 중복 외에도 다른 제약조건에 걸리면 테스트 패스하기 때문
+            - 지금은.. 찾아보니 ConstraintViolationException은 JDBCException 상속받고 있는데용... Gavin King님이 작성했음
+            - 그래도 토비아저씨가 하고싶은 얘기는 추상화된 예외를 기대하는 테스트를 쓸 때는 조심히 쓰라 이거지
+            - DuplicatedUserIdException처럼 직접 예외를 정의해두고 테스트코드를 쓰면 좋을거라고 하신다.
+            - 명확한 예외를 expected로 붙이지 말고 테스트데이터의 결과로 확인하는 방법은 별로인가?
+                - 예를 들어 중복 키를 갖는 2개의 데이터를 add할 때, 그 키로 데이터를 찾으니 1개다 이런식?
+                - 그래도 명확한 예외를 테스트에 붙여놔야 누가 볼 때도 무슨예외가 나오는지 확인하기 좋기도 하고 더 명확한 느낌이긴 하다. 
+        - 스프링은 SQLException을 DataAccessException으로 전환하는 다양한 방법을 제공한다.
+            - DB 에러 코드를 이용하는 방법이 효과적이라고 한다.
+            - ```
+              // SQLException 전환 기능의 학습 테스트
+              // 어쩜 이렇게 복습까지 할 수 있도록 배려를 하셨을까
+              @Test
+              public void translateSqlExecption() {
+                userDao.deleteAll();
+                try {
+                  addUsersHavingDuplicateKey();
+                } catch (DuplicateKeyException e) {
+                  SQLException sqlException = (SQLException) e.getRootCause();
+                  // 코드를 이용한 SQLException 전환
+                  SQLErrorCodeSQLExceptionTranslator translator = new SQLErrorCodeSQLExceptionTranslator(this.dataSource);
+                  assertThat(translator.translate(null, null, sqlException).getClass()).isEqualTo(DuplicateKeyException.class);
+                }
+              }
+              ```
 ### 3. 정리
 - 바람직한 예외처리 방법이 무엇인지 살펴본 챕터
 - ```

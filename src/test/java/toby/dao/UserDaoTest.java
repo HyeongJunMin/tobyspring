@@ -1,16 +1,19 @@
 package toby.dao;
 
 import lombok.extern.slf4j.Slf4j;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator;
 import org.springframework.test.context.junit4.SpringRunner;
 import toby.common.exception.DuplicateUserIdException;
 import toby.domain.User;
 
+import javax.sql.DataSource;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
@@ -22,20 +25,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Slf4j
 public class UserDaoTest {
 
-  UserDao userDao;
+  @Autowired
+  private UserDao userDao;
 
-  @Before
-  public void setUp() {
-    AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(DaoFactory.class);
-    userDao = context.getBean("userDao", UserDao.class);
-  }
+  @Autowired
+  private DataSource dataSource;
 
   @Test(expected = DuplicateUserIdException.class)
   public void add() throws SQLException, ClassNotFoundException {
     String userId = "id01";
     userDao.deleteAll();
     User user = new User(userId, "name1", "password1");
-    userDao.add(user);
+    userDao.addWithDuplicateUserIdException(user);
     User user2 = userDao.get(userId);
     assertThat(userId.equals(user2.getId()));
     log.info("user 2 : {}", user.toString());
@@ -82,5 +83,37 @@ public class UserDaoTest {
     userDao.deleteAll();
     List<User> userList = userDao.getAll();
     assertThat(userList.size()).isEqualTo(0);
+  }
+
+  @Test(expected = DataAccessException.class)
+  public void addUsersHavingDuplicateKeyThrowsDataAccessException() {
+    addUsersHavingDuplicateKey();
+  }
+
+  private void addUsersHavingDuplicateKey() {
+    User user = new User("duplicatedKey", "name1", "password1");
+    userDao.deleteAll();
+    userDao.add(user);
+    userDao.add(user);
+  }
+
+  @Test(expected = DuplicateKeyException.class)
+  public void addUsersHavingDuplicateKeyThrowsDuplicateKeyException() {
+    addUsersHavingDuplicateKey();
+  }
+
+  // SQLException 전환 기능의 학습 테스트
+  // 어쩜 이렇게 복습까지 할 수 있도록 배려를 하셨을까
+  @Test
+  public void translateSqlExecption() {
+    userDao.deleteAll();
+    try {
+      addUsersHavingDuplicateKey();
+    } catch (DuplicateKeyException e) {
+      SQLException sqlException = (SQLException) e.getRootCause();
+      // 코드를 이용한 SQLException 전환
+      SQLErrorCodeSQLExceptionTranslator translator = new SQLErrorCodeSQLExceptionTranslator(this.dataSource);
+      assertThat(translator.translate(null, null, sqlException).getClass()).isEqualTo(DuplicateKeyException.class);
+    }
   }
 }
