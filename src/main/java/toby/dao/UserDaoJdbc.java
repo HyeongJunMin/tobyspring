@@ -3,6 +3,7 @@ package toby.dao;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import toby.common.exception.DuplicateUserIdException;
+import toby.domain.Level;
 import toby.domain.User;
 
 import javax.sql.DataSource;
@@ -49,6 +50,9 @@ public class UserDaoJdbc implements UserDao {
       user.setId(resultSet.getString("id"));
       user.setName(resultSet.getString("name"));
       user.setPassword(resultSet.getString("password"));
+      user.setLevel(Level.valueOf(resultSet.getInt("level")));
+      user.setLogin(resultSet.getInt("login"));
+      user.setRecommend(resultSet.getInt("recommend"));
       return user;
     };
   }
