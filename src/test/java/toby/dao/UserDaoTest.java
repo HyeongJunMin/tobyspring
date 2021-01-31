@@ -11,6 +11,7 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.support.SQLErrorCodeSQLExceptionTranslator;
 import org.springframework.test.context.junit4.SpringRunner;
 import toby.common.exception.DuplicateUserIdException;
+import toby.domain.Level;
 import toby.domain.User;
 
 import javax.sql.DataSource;
@@ -35,7 +36,7 @@ public class UserDaoTest {
   public void add() throws SQLException, ClassNotFoundException {
     String userId = "id01";
     userDao.deleteAll();
-    User user = new User(userId, "name1", "password1");
+    User user = new User(userId, "name1", "password1", Level.BASIC, 1, 0);
     userDao.addWithDuplicateUserIdException(user);
     User user2 = userDao.get(userId);
     assertThat(userId.equals(user2.getId()));
@@ -50,7 +51,7 @@ public class UserDaoTest {
   @Test(expected = EmptyResultDataAccessException.class)
   public void getUserByNameWithNotExistingName() throws Exception {
     userDao.deleteAll();
-    User user = new User("userId1", "name1", "password1");
+    User user = new User("userId1", "name1", "password1", Level.BASIC, 1, 0);
     userDao.add(user);
     userDao.getUserByName("name21");
   }
@@ -58,9 +59,9 @@ public class UserDaoTest {
   @Test
   public void getAll() throws Exception {
     userDao.deleteAll();
-    User user1 = new User("001", "name1", "password1");
-    User user2 = new User("002", "name2", "password2");
-    User user3 = new User("003", "name3", "password3");
+    User user1 = new User("001", "name1", "password1", Level.BASIC, 1, 0);
+    User user2 = new User("002", "name2", "password2", Level.BASIC, 1, 0);
+    User user3 = new User("003", "name3", "password3", Level.BASIC, 1, 0);
     List<User> originUserList = Arrays.asList(user1, user2, user3);
     for(User user : originUserList) { userDao.add(user); }
 
@@ -91,7 +92,7 @@ public class UserDaoTest {
   }
 
   private void addUsersHavingDuplicateKey() {
-    User user = new User("duplicatedKey", "name1", "password1");
+    User user = new User("duplicatedKey", "name1", "password1", Level.BASIC, 1, 0);
     userDao.deleteAll();
     userDao.add(user);
     userDao.add(user);
@@ -115,5 +116,26 @@ public class UserDaoTest {
       SQLErrorCodeSQLExceptionTranslator translator = new SQLErrorCodeSQLExceptionTranslator(this.dataSource);
       assertThat(translator.translate(null, null, sqlException).getClass()).isEqualTo(DuplicateKeyException.class);
     }
+  }
+
+  @Test
+  public void update() {
+    // when
+    userDao.deleteAll();
+    User user = new User("001", "name1", "password1", Level.BASIC, 1, 0);
+    User finalUser = new User("002", "name1", "password1", Level.BASIC, 1, 0);
+    userDao.add(user);
+    userDao.add(finalUser);
+    user.setName("히히힣");
+    user.setPassword("dkaghghkehlsqlalfqjsgh");
+    user.setLevel(Level.SILVER);
+    user.setLogin(1000);
+    user.setRecommend(999);
+    userDao.update(user);
+    // then
+    User updatedUser = userDao.get(user.getId());
+    checkSameUser(user, updatedUser);
+    User updatedFinalUser = userDao.get(finalUser.getId());
+    checkSameUser(finalUser, updatedFinalUser);
   }
 }

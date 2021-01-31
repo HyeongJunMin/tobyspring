@@ -18,14 +18,14 @@ public class UserDaoJdbc implements UserDao {
   }
 
   public void add(final User user) {
-    this.jdbcTemplate.update("insert into users(id, name, password) values(?, ?, ?)"
-            , user.getId(), user.getName(), user.getPassword());
+    this.jdbcTemplate.update("insert into users(id, name, password, level, login, recommend) values(?, ?, ?, ?, ?, ?)"
+            , user.getId(), user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend());
   }
 
   public void addWithDuplicateUserIdException(final User user) throws DuplicateUserIdException {
     try {
-      this.jdbcTemplate.update("insert into users(id, name, password) values(?, ?, ?)"
-              , user.getId(), user.getName(), user.getPassword());
+      this.jdbcTemplate.update("insert into users(id, name, password, level, login, recommend) values(?, ?, ?, ?, ?, ?)"
+              , user.getId(), user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend());
       throw new SQLException("test", "test", DuplicateUserIdException.ERROR_DUPLICATED_ENTRY);
     } catch (SQLException e) {
       if (e.getErrorCode() == DuplicateUserIdException.ERROR_DUPLICATED_ENTRY) {
@@ -67,6 +67,11 @@ public class UserDaoJdbc implements UserDao {
 
   public List<User> getAll() {
     return jdbcTemplate.query("select * from users order by id", getUserMapper());
+  }
+
+  public void update(User user) {
+    this.jdbcTemplate.update("update users set name = ?, password = ?, level = ?, login = ?, recommend = ? where id = ?"
+        , user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend(), user.getId());
   }
 
 }
