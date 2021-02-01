@@ -1,13 +1,11 @@
 package toby.service;
 
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.junit4.SpringRunner;
 import toby.dao.UserDao;
 import toby.domain.Level;
@@ -65,6 +63,23 @@ class UserServiceTest {
   private void checkLevel(String userId, Level expectedLevel) {
     User updatedUser = userDao.get(userId);
     assertThat(updatedUser.getLevel()).isEqualTo(expectedLevel);
+  }
+
+  @Test
+  public void addDefaultLevel() {
+    User userWithLevel = userList.get(4);
+    userService.add(userWithLevel);
+    User userWithLevelRead = userDao.get(userWithLevel.getId());
+    assertThat(userWithLevel.getLevel()).isEqualTo(userWithLevelRead.getLevel());
+  }
+
+  @Test
+  public void addGivenLevel() {
+    User userWithoutLevel = userList.get(0);
+    userWithoutLevel.setLevel(null);
+    userService.add(userWithoutLevel);
+    User userWithoutLevelRead = userDao.get(userWithoutLevel.getId());
+    assertThat(userWithoutLevel.getLevel()).isEqualTo(userWithoutLevelRead.getLevel());
   }
 
 }

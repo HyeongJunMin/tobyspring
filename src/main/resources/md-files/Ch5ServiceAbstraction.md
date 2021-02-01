@@ -97,9 +97,132 @@
     - UserService 추가
         - 나는 xml설정 안하기 때문에 @Service 사용
         - ```
+          @Service
+          public class UserService {          
+            public static int LOGIN_COUNT_FOR_SILVER = 50;
+            public static int RECOMMEND_COUNT_FOR_GOLD = 30;          
+            @Autowired
+            private UserDao userDao;          
+            public void upgradeLevels() {
+              List<User> userList = userDao.getAll();
+              userList.forEach(user -> {
+                if (Level.GOLD == user.getLevel()) {
+                  return;
+                }
+                if (Level.BASIC == user.getLevel() && user.getLogin() >= LOGIN_COUNT_FOR_SILVER) {
+                  user.setLevel(Level.SILVER);
+                  userDao.update(user);
+                  return;
+                }
+                if (Level.SILVER == user.getLevel() && user.getRecommend() >= RECOMMEND_COUNT_FOR_GOLD) {
+                  user.setLevel(Level.GOLD);
+                  userDao.update(user);
+                  return;
+                }
+              });
+            }          
+            public void add(User user) {
+              if (user.getLevel() == null) {
+                user.setLevel(Level.BASIC);
+              }
+              userDao.add(user);
+            }          
+          }
           ```
 4. UserService.add()
-    - 처음 가입하는 사용자 BASIC레벨 설정은 어디가 좋을까?
+    - 처음 가입하는 사용자 BASIC레벨 설정은 -> 비즈니스 로직을 담고 있는 UserService가 적당
+    - ```
+      @Test
+      public void addDefaultLevel() {
+        User userWithLevel = userList.get(4);
+        userService.add(userWithLevel);
+        User userWithLevelRead = userDao.get(userWithLevel.getId());
+        assertThat(userWithLevel.getLevel()).isEqualTo(userWithLevelRead.getLevel());
+      }      
+      @Test
+      public void addGivenLevel() {
+        User userWithoutLevel = userList.get(0);
+        userWithoutLevel.setLevel(null);
+        userService.add(userWithoutLevel);
+        User userWithoutLevelRead = userDao.get(userWithoutLevel.getId());
+        assertThat(userWithoutLevel.getLevel()).isEqualTo(userWithoutLevelRead.getLevel());
+      }
+      ```
+5. 코드 개선
+    - 무엇을 개선할까?
+        1. 코드에 중복 없나요
+        2. 가독성 괜찮나요
+        3. 각 코드는 적당한 제자리에 있나요
+        4. 변경에 대해 유연하게 대처할 수 있는 코드인가요
+    - upgradeLevels()
+        - 내가 스스로 바꿨던 코드
+        - ```
+          public void upgradeLevels() {
+            List<User> userList = userDao.getAll();
+            userList.forEach(user -> {
+              if (Level.GOLD == user.getLevel()) {
+                return;
+              }
+              if (Level.BASIC == user.getLevel() && user.getLogin() >= LOGIN_COUNT_FOR_SILVER) {
+                user.setLevel(Level.SILVER);
+                userDao.update(user);
+                return;
+              }
+              if (Level.SILVER == user.getLevel() && user.getRecommend() >= RECOMMEND_COUNT_FOR_GOLD) {
+                user.setLevel(Level.GOLD);
+                userDao.update(user);
+                return;
+              }
+            });
+          }
+          ```
+        - 토비 아저씨가 개선한 코드
+        - ```
+          public void upgradeLevels() {
+            List<User> userList = userDao.getAll();
+            userList.forEach(user -> {
+              if (canUpgradeLevel(user)) {
+                upgradeLevel(user);
+              }
+            });
+          }          
+          private boolean canUpgradeLevel(User user) {
+            Level currentLevel = user.getLevel();
+            switch (currentLevel) {
+              case GOLD: return false;
+              case BASIC: return (user.getLogin() >= LOGIN_COUNT_FOR_SILVER);
+              case SILVER: return (user.getRecommend() >= RECOMMEND_COUNT_FOR_GOLD);
+              default: throw new IllegalArgumentException("Unknown level : " + currentLevel);
+            }
+          }          
+          public void upgradeLevel(User user) {
+            user.upgradeLevel();
+            userDao.update(user);
+          }
+          ```
+        - ```
+          public class User {
+            ...
+            public void upgradeLevel() {
+              Level nextLevel = this.level.getNextLevel();
+              if (nextLevel == null) {
+                throw new IllegalStateException(this.level + "은 업그레이드가 불가합니다.");
+              }
+              this.level = nextLevel;
+            }
+          }
+          ```
+    - User 테스트
+        - User 도메인에도 메서드를 추가했으니 그에 맞는 테스트를 작성해보자.
+        - 레벨 업그레이드가 잘 되는지, 안되는 업그레이드 시키면 기대에 맞는 예외가 발생 하는지
+    - UserService 테스트
+        - private check메서드로 중복제거
+        - 하드코딩된 정수를 상수로 선언
+        - 시작할 떄 부터 비슷하게 만들어서 패스
+    - UserService 변화
+        - 특정 이벤트 때문에 업그레이드 정책(조건)이 바뀔 수 있다면?
+        - UserService를 인터페이스로 선언하고, 정책에 맞는 Service 구현체를 사용하도록 변경
+        - 그러면 재시작 해야되잖아? 그냥 property로 갖고 준비해놨다가 필요할 때 켜면 되지요
 ## 7. 정리
 - 전략 패턴
     - 로직에
