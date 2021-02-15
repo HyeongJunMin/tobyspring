@@ -2,6 +2,7 @@ package toby.dao;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.transaction.annotation.Transactional;
 import toby.common.exception.DuplicateUserIdException;
 import toby.domain.Level;
 import toby.domain.User;
@@ -19,14 +20,19 @@ public class UserDaoJdbc implements UserDao {
   }
 
   public void add(final User user) {
-    this.jdbcTemplate.update("insert into users(id, name, password, level, login, recommend) values(?, ?, ?, ?, ?, ?)"
-            , user.getId(), user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend());
+    this.jdbcTemplate.update("insert into users(id, name, password, level, login, recommend, email) values(?, ?, ?, ?, ?, ?, ?)"
+            , user.getId(), user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend(), user.getEmail());
+  }
+
+  @Transactional
+  public void addAll(List<User> userList) {
+    userList.forEach(user -> add(user));
   }
 
   public void addWithDuplicateUserIdException(final User user) throws DuplicateUserIdException {
     try {
-      this.jdbcTemplate.update("insert into users(id, name, password, level, login, recommend) values(?, ?, ?, ?, ?, ?)"
-              , user.getId(), user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend());
+      this.jdbcTemplate.update("insert into users(id, name, password, level, login, recommend, email) values(?, ?, ?, ?, ?, ?, ?)"
+              , user.getId(), user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend(), user.getEmail());
       throw new SQLException("test", "test", DuplicateUserIdException.ERROR_DUPLICATED_ENTRY);
     } catch (SQLException e) {
       if (e.getErrorCode() == DuplicateUserIdException.ERROR_DUPLICATED_ENTRY) {
@@ -53,6 +59,7 @@ public class UserDaoJdbc implements UserDao {
       user.setLevel(Level.valueOf(resultSet.getInt("level")));
       user.setLogin(resultSet.getInt("login"));
       user.setRecommend(resultSet.getInt("recommend"));
+      user.setEmail(resultSet.getString("email"));
       return user;
     };
   }
@@ -74,8 +81,8 @@ public class UserDaoJdbc implements UserDao {
   }
 
   public void update(User user) {
-    this.jdbcTemplate.update("update users set name = ?, password = ?, level = ?, login = ?, recommend = ? where id = ?"
-        , user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend(), user.getId());
+    this.jdbcTemplate.update("update users set name = ?, password = ?, level = ?, login = ?, recommend = ?, email = ? where id = ?"
+        , user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend(), user.getEmail(), user.getId());
   }
 
 }

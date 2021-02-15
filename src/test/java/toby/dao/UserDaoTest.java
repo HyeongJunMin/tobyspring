@@ -36,7 +36,7 @@ public class UserDaoTest {
   public void add() throws SQLException, ClassNotFoundException {
     String userId = "id01";
     userDao.deleteAll();
-    User user = new User(userId, "name1", "password1", Level.BASIC, 1, 0);
+    User user = new User(userId, "name1", "password1", Level.BASIC, 1, 0, "me@naver.com");
     userDao.addWithDuplicateUserIdException(user);
     User user2 = userDao.get(userId);
     assertThat(userId.equals(user2.getId()));
@@ -51,7 +51,7 @@ public class UserDaoTest {
   @Test(expected = EmptyResultDataAccessException.class)
   public void getUserByNameWithNotExistingName() throws Exception {
     userDao.deleteAll();
-    User user = new User("userId1", "name1", "password1", Level.BASIC, 1, 0);
+    User user = new User("userId1", "name1", "password1", Level.BASIC, 1, 0, "me@naver.com");
     userDao.add(user);
     userDao.getUserByName("name21");
   }
@@ -59,9 +59,9 @@ public class UserDaoTest {
   @Test
   public void getAll() throws Exception {
     userDao.deleteAll();
-    User user1 = new User("001", "name1", "password1", Level.BASIC, 1, 0);
-    User user2 = new User("002", "name2", "password2", Level.BASIC, 1, 0);
-    User user3 = new User("003", "name3", "password3", Level.BASIC, 1, 0);
+    User user1 = new User("001", "name1", "password1", Level.BASIC, 1, 0, "me@naver.com");
+    User user2 = new User("002", "name2", "password2", Level.BASIC, 1, 0, "me@naver.com");
+    User user3 = new User("003", "name3", "password3", Level.BASIC, 1, 0, "me@naver.com");
     List<User> originUserList = Arrays.asList(user1, user2, user3);
     for(User user : originUserList) { userDao.add(user); }
 
@@ -92,7 +92,7 @@ public class UserDaoTest {
   }
 
   private void addUsersHavingDuplicateKey() {
-    User user = new User("duplicatedKey", "name1", "password1", Level.BASIC, 1, 0);
+    User user = new User("duplicatedKey", "name1", "password1", Level.BASIC, 1, 0, "me@naver.com");
     userDao.deleteAll();
     userDao.add(user);
     userDao.add(user);
@@ -122,8 +122,8 @@ public class UserDaoTest {
   public void update() {
     // when
     userDao.deleteAll();
-    User user = new User("001", "name1", "password1", Level.BASIC, 1, 0);
-    User finalUser = new User("002", "name1", "password1", Level.BASIC, 1, 0);
+    User user = new User("001", "name1", "password1", Level.BASIC, 1, 0, "me@naver.com");
+    User finalUser = new User("002", "name1", "password1", Level.BASIC, 1, 0, "me@naver.com");
     userDao.add(user);
     userDao.add(finalUser);
     user.setName("히히힣");
@@ -137,5 +137,21 @@ public class UserDaoTest {
     checkSameUser(user, updatedUser);
     User updatedFinalUser = userDao.get(finalUser.getId());
     checkSameUser(finalUser, updatedFinalUser);
+  }
+
+  @Test
+  public void addAllIsTransactional() {
+    userDao.deleteAll();
+    User user1 = new User("001", "name1", "password1", Level.BASIC, 1, 0, "me@naver.com");
+    User user2 = new User("002", "name2", "password2", Level.BASIC, 1, 0, "me@naver.com");
+    User duplicatedUser = new User("002", "name3", "password3", Level.BASIC, 1, 0, "me@naver.com");
+    List<User> originUserList = Arrays.asList(user1, user2, duplicatedUser);
+    try {
+      userDao.addAll(originUserList);
+    } catch (Exception e) {
+      // ignore
+    }
+    List<User> userList = userDao.getAll();
+    assertThat(userList.size()).isEqualTo(0);
   }
 }

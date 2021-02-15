@@ -5,5 +5,6 @@ CREATE TABLE users (
    password VARCHAR(50) NOT NULL,
    level int NOT NULL,
    login int NOT NULL,
-   recommend int NOT NULL
+   recommend int NOT NULL,
+   email VARCHAR(50) NOT NULL
 );
