@@ -9,11 +9,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
+import org.springframework.transaction.annotation.Transactional;
 import toby.dao.UserDao;
 import toby.domain.Level;
 import toby.domain.User;
 
 import java.util.List;
+import java.util.Optional;
 
 @Setter
 @Service
@@ -80,6 +82,24 @@ public class UserService {
       user.setLevel(Level.BASIC);
     }
     userDao.add(user);
+  }
+
+  public void createOrIncreaseRecommend(User user) {
+    final Optional<String> any = userDao.getAll()
+        .stream()
+        .map(User::getId)
+        .filter(id -> id.equals(user.getId()))
+        .findAny();
+    if (any.isPresent()) {
+      user.setRecommend(user.getRecommend() + 1);
+      userDao.update(user);
+    } else {
+      try {
+        userDao.add(user);
+      } catch (Exception e) {
+        System.out.println("user id : " + user.getId());
+      }
+    }
   }
 
 }

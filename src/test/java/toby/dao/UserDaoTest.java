@@ -154,4 +154,9 @@ public class UserDaoTest {
     List<User> userList = userDao.getAll();
     assertThat(userList.size()).isEqualTo(0);
   }
+
+  @Test
+  public void multiThread() {
+    userDao.deleteAll();
+  }
 }

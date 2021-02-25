@@ -21,6 +21,9 @@ import toby.domain.User;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
@@ -98,6 +101,29 @@ class UserServiceTest {
     userService.add(userWithoutLevel);
     User userWithoutLevelRead = userDao.get(userWithoutLevel.getId());
     assertThat(userWithoutLevel.getLevel()).isEqualTo(userWithoutLevelRead.getLevel());
+  }
+
+  @Test
+  public void multiThread() throws ExecutionException, InterruptedException {
+    userDao.deleteAll();
+    User user = new User("5555", "예림이그패봐봐", "pass", Level.BASIC, 0, 0, "");
+    ForkJoinPool myPool = new ForkJoinPool(10);
+    myPool.submit(() -> {
+      IntStream.range(0, 1000).parallel().forEach(index -> {
+        userService.createOrIncreaseRecommend(user);
+      });
+    }).get();
+
+    for (User resultUser : userDao.getAll()) {
+      log.info("result user : {}", resultUser);
+    }
+
+  }
+
+  @Test
+  public void changeStringInPrivateMEthod() {
+    String originString = "origin";
+    log.info("origin :{}", originString);
   }
 
   static class TestUserService extends UserService {
