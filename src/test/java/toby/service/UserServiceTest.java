@@ -64,12 +64,22 @@ class UserServiceTest {
     userDao.deleteAll();
     userList.forEach(user -> userDao.add(user));
 
+    MockMailSender mockMailSender = new MockMailSender();
+    userServiceImpl.setMailSender(mockMailSender);
+
     userService.upgradeLevels();
-    checkLevel(userList.get(0).getId(), Level.BASIC);
-    checkLevel(userList.get(1).getId(), Level.SILVER);
-    checkLevel(userList.get(2).getId(), Level.SILVER);
-    checkLevel(userList.get(3).getId(), Level.GOLD);
-    checkLevel(userList.get(4).getId(), Level.GOLD);
+
+    checkLevelUpgraded(userList.get(0), false);
+    checkLevelUpgraded(userList.get(1), true);
+    checkLevelUpgraded(userList.get(2), false);
+    checkLevelUpgraded(userList.get(3), true);
+    checkLevelUpgraded(userList.get(4), true);
+
+    List<String> requests = mockMailSender.getRequests();
+    assertThat(requests.size()).isEqualTo(3);
+    assertThat(requests.get(0)).isEqualTo(userList.get(1).getEmail());
+    assertThat(requests.get(1)).isEqualTo(userList.get(3).getEmail());
+    assertThat(requests.get(2)).isEqualTo(userList.get(4).getEmail());
   }
 
   private void checkLevel(String userId, Level expectedLevel) {
