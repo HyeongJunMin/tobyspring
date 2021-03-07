@@ -22,7 +22,9 @@
     2. 한 클래스가 하나의 책임만 갖도록 : UserService에서 트랜잭션 경계설정 코드
 1. 메서드 분리
     - upgradeLevels()에서 트랜잭션 경계설정 코드와 비즈니스 로직 코드를 분리한다.
-    - ```
+    - <details markdown="1">
+      <summary>코드 접기/펼치기</summary>
+      <pre>
       // 트랜잭션 경계설정 코드만 남은 메서드
       public void upgradeLevels() {
         TransactionStatus status = transactionManager.getTransaction(new DefaultTransactionDefinition());
@@ -43,14 +45,17 @@
           }
         });
       }
-      ```
+      </pre>
+      </details>
 2. DI를 이용한 클래스의 분리
     - 트랜잭션을 담당하는 코드는 UserService에 있을 필요가 없으니 클래스 밖으로 뽑아낸다.
     - UserService에 인터페이스를 도입하고 구현클래스를 2개 둔다(UserServiceImpl, UserServiceTx)
     - UserServiceTx는 트랜잭션 경계설정에 대한 책임만 갖게된다.
     - UserServiceTx는 비즈니스 로직을 전혀 갖지 않고 다른 UserService 구현 오브젝트에 위임만 한다.
     - 트랜잭션이 적용된 UserServiceTx
-    - ```
+    - <details markdown="1">
+      <summary>코드 접기/펼치기</summary>
+      <pre>
       @RequiredArgsConstructor
       public class UserServiceTx implements UserService {      
         private final UserService userService;
@@ -68,7 +73,8 @@
         }
         ...
       }
-      ```
+      </pre>
+      </details>
     - 트랜잭션 경계설정 코드 분리의 장점
         1. UserServiceImpl은 트랜잭션 내용을 신경쓰지 않아도 된다.
         2. 비즈니스 로직에 대한 테스트를 손쉽게 만들어낼 수 있다.(다음절에서 확인)
@@ -92,7 +98,9 @@
         - upgradeLevels()에 적용
         - UserDao 목 객체
             - UserServiceTest전용이므로 스태틱 내부 클래스로 선언
-        - ```
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
           @Test
           public void upgradeLevels() throws Exception {
             // 고립된 테스트이므로 대상 객체를 직접 생성한다.
@@ -116,7 +124,8 @@
             assertThat(requests.get(1)).isEqualTo(userList.get(3).getEmail());
             assertThat(requests.get(2)).isEqualTo(userList.get(4).getEmail());
           }
-          ```
+          </pre>
+          </details>
 3. 단위 테스트와 통합 테스트
     - 이 책에서 단위 테스트 : 의존 오브젝트나 외부 리소스를 사용하지 않도록 고립시킨 테스트
     - 이 책에서 통합 테스트 : 외부의 DB, 파일 등의 리소스가 참여하는 테스트
@@ -130,7 +139,9 @@
         - 오... 좋은데
         - 생성자 의존성 주입으로 바꾸면 더 좋겠다.
         - 좋은데 앞으로 안쓴단다. 왜안쓰지;;
-        - ```
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
           @Test
           public void upgradeLevelsWithMockito() {
             UserServiceImpl userService = new UserServiceImpl();
@@ -157,7 +168,8 @@
             assertThat(mailMessages.get(1).getTo()[0]).isEqualTo(userList.get(3).getEmail());
             assertThat(mailMessages.get(2).getTo()[0]).isEqualTo(userList.get(4).getEmail());
           }
-          ```
+          </pre>
+          </details>
 
 ### 3. 다이내믹 프록시와 팩토리 빈
 1. 프록시와 프록시 패턴, 데코레이터 패턴
@@ -204,7 +216,9 @@
             1. 타깃과 같은 메서드를 구현하고 있다가 메서드가 호출되면 타깃 객체로 위임한다.
             2. 지정된 요청에 대해서는 부가기능을 수행할 수 있다.
         - UserServiceTx에서 프록시의 구성
-        - ```
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>   
           public class UserServiceTx implements UserService {          
             @Autowired private PlatformTransactionManager transactionManager;          
             @Autowired private UserServiceImpl userService;          
@@ -223,13 +237,16 @@
               // ~ 부가기능 수행
             }
           }
-          ```
+          </pre>
+          </details>
         - 프록시 작성의 문제점
             1. 타깃의 인터페이스를 구현하고 위임하는 코드를 작성하기 번거롭다. 메서드가 추가되거나 변경될 때 마다 해줘야된다.
             2. 부가기능 코드 중복이 몹시 심해진다.
     - 리플렉션
         - JDK의 다이내믹 프록시는 리플렉션 기능을 이용해서 프록시를 만들어 준다.
-        - ```
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
           @Test
           public void invokeMethod() throws Exception {
             String name = "Spring";
@@ -242,8 +259,9 @@
             char charAt = name.charAt(index);
             Method charAtMethod = String.class.getMethod("charAt", int.class);
             assertThat(charAtMethod.invoke(name, index)).isEqualTo(charAt);
-          }
-          ```
+          }          
+          </pre>
+          </details>
     - 프록시 클래스
         - 다이내믹 프록시를 이용한 프록시를 만들어본다.
         - HelloProxyTest.simpleProxy()는 프록시 적용의 일반적인 문제점 두가지를 모두 갖는다.
