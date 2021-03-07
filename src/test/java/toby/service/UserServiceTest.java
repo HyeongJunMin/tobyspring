@@ -27,8 +27,8 @@ import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
-import static toby.service.UserService.LOGIN_COUNT_FOR_SILVER;
-import static toby.service.UserService.RECOMMEND_COUNT_FOR_GOLD;
+import static toby.service.UserServiceImpl.LOGIN_COUNT_FOR_SILVER;
+import static toby.service.UserServiceImpl.RECOMMEND_COUNT_FOR_GOLD;
 
 @RunWith(SpringRunner.class)
 @SpringBootTest
@@ -36,6 +36,7 @@ import static toby.service.UserService.RECOMMEND_COUNT_FOR_GOLD;
 class UserServiceTest {
 
   @Autowired private UserService userService;
+  @Autowired private UserServiceImpl userServiceImpl;
   @Autowired private UserDao userDao;
   @Autowired private PlatformTransactionManager transactionManager;
   @Autowired private MailSender mailSender;
@@ -96,6 +97,7 @@ class UserServiceTest {
 
   @Test
   public void addGivenLevel() {
+    userDao.deleteAll();
     User userWithoutLevel = userList.get(0);
     userWithoutLevel.setLevel(null);
     userService.add(userWithoutLevel);
@@ -126,10 +128,9 @@ class UserServiceTest {
     log.info("origin :{}", originString);
   }
 
-  static class TestUserService extends UserService {
+  static class TestUserService extends UserServiceImpl {
 
     private String id;
-
     public TestUserService(String id) {
       this.id = id;
     }
@@ -140,18 +141,21 @@ class UserServiceTest {
       }
       super.upgradeLevel(user);
     }
+
   }
 
   @Test
   public void upgradeAllOrNothing() {
     TestUserService testUserService = new TestUserService(userList.get(3).getId());
     testUserService.setUserDao(this.userDao);
-    testUserService.setTransactionManager(transactionManager);
     testUserService.setMailSender(mailSender);
+    UserServiceTx userServiceTx = new UserServiceTx();
+    userServiceTx.setTransactionManager(transactionManager);
+    userServiceTx.setUserService(testUserService);
     userDao.deleteAll();
     userList.forEach(user -> userDao.add(user));
     try {
-      testUserService.upgradeLevels();
+      userServiceTx.upgradeLevels();
       fail("TestUserServiceException expected");
     } catch (TestUserServiceException e) {
     }
@@ -178,7 +182,7 @@ class UserServiceTest {
     userDao.deleteAll();
     userList.forEach(user -> userDao.add(user));
     MockMailSender mockMailSender = new MockMailSender();
-    userService.setMailSender(mockMailSender);
+    userServiceImpl.setMailSender(mockMailSender);
     userService.upgradeLevels();
     checkLevelUpgraded(userList.get(0), false);
     checkLevelUpgraded(userList.get(1), true);
