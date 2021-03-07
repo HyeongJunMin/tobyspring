@@ -308,3 +308,162 @@
           }
           </pre>          
           </details>
+    - TransactionHandler와 다이내믹 프록시를 이용하는 테스트
+        - UserServiceTest에 적용
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          @Test
+          public void upgradeAllOrNothing() {
+            TestUserService testUserService = new TestUserService(userList.get(3).getId());
+            testUserService.setUserDao(this.userDao);
+            testUserService.setMailSender(mailSender);
+            TransactionHandler txHandler = new TransactionHandler();
+            txHandler.setTarget(testUserService);
+            txHandler.setTransactionManager(transactionManager);
+            txHandler.setPattern("upgradeLevels");
+            UserService txUserService = (UserService)Proxy.newProxyInstance(
+                    getClass().getClassLoader(),
+                    new Class[] { UserService.class },
+                    txHandler
+            );
+            userDao.deleteAll();
+            userList.forEach(user -> userDao.add(user));
+            try {
+              txUserService.upgradeLevels();
+              fail("TestUserServiceException expected");
+            } catch (TestUserServiceException e) {
+            }
+            checkLevelUpgraded(userList.get(1), false);
+          }
+          </pre>
+          </details>
+4. 다이내믹 프록시를 위한 팩토리 빈
+    - 이제 TransactionHandler와 다이내믹 프록시를 스프링의 DI를 통해 사용할 수 있도록 만들 차례다.
+    - 그런데 일반적인 빈으로 등록할 수 없는게 문제
+        - 스프링 빈은 클래스 이름과 프로퍼티로 정의되는데?
+        - 스프링은 지정된 클래스 이름을 가지고 리플렉션을 이용해서 해달 클래스의 객체를 만들어요
+        - 다이내믹 프록시 객체는 이런 식으로 프록시 객체가 생성되지 않는다는 점이다.
+        - 다이내믹 프록시는 Proxy클래스의 newProxyInstance()라는 스태틱 메서드를 통해서만 만들 수 있다.
+    - 팩토리 빈
+        - 스프링을 대신해서 객체의 생성로직을 담당하도록 만들어진 특별한 빈
+        - 팩토리 빈을 등록하는 가장 간단한 방법은 스프링의 FactoryBean인터페이스를 구현하는 방법
+        - 생성자를 제공하지 않는 Message클래스를 팩토리 빈으로 등록하는 예제
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          // 참고 : https://www.baeldung.com/spring-factorybean
+          @RunWith(SpringJUnit4ClassRunner.class)
+          @ContextConfiguration(classes = FactoryBeanConfig.class)
+          public class MessageFactoryBeanTest {          
+            @Autowired
+            private ApplicationContext context;          
+            @Qualifier("message")
+            @Autowired
+            private Message message;          
+            @Resource(name = "&message")
+            private MessageFactoryBean messageFactoryBean;          
+            @Test
+            public void getMessageFromFactoryBean() throws Exception {
+              Object messageFromContext = context.getBean("message");
+              assertThat(messageFromContext).isInstanceOf(Message.class);
+              assertThat(((Message) messageFromContext).getText()).isEqualTo("Factory Bean");
+              assertThat((message).getText()).isEqualTo("Factory Bean");
+              Message messageFromFactoryBean = messageFactoryBean.getObject();
+              assertThat(messageFromFactoryBean.getText()).isEqualTo("Factory Bean");
+            }
+          }
+          </pre>
+          </details>
+    - 다이내믹 프록시를 만들어주는 팩토리 빈
+        - 팩토리 빈을 사용하면 스프링의 빈으로 만들어 줄 수 있군(팩토리 빈의 getObject 메서드)
+        - <details markdown="1">
+          <summary>FactoryBean코드 접기/펼치기</summary>
+          <pre>
+          @Setter
+          public class TxProxyFactoryBean implements FactoryBean<Object> {
+            private Object target;
+            private PlatformTransactionManager transactionManager;
+            private String pattern;
+            private Class<?> serviceInterface;          
+            // FactoryBean 구현 메서드
+            @Override
+            public Object getObject() throws Exception {
+              TransactionHandler txHandler = new TransactionHandler();
+              txHandler.setTarget(target);
+              txHandler.setTransactionManager(transactionManager);
+              txHandler.setPattern(pattern);
+              return Proxy.newProxyInstance(getClass().getClassLoader(),
+                      new Class[]{serviceInterface},
+                      txHandler);
+            }
+            public Class<?> getObjectType() {
+              return serviceInterface;
+            }
+              public boolean isSingleton () {
+                // 싱글톤 빈이 아니라는 뜻이 아님
+                // getObject가 매 번 같은 객체를 리턴하지 않는다는 의미
+                return false;
+            }
+          }
+          </pre>
+          </details>
+          <details markdown="1">
+          <summary>Config 코드 접기/펼치기</summary>
+          <pre>
+          @Configuration
+          public class FactoryBeanConfig {          
+            @Autowired private UserServiceImpl userServiceImpl;
+            @Autowired private PlatformTransactionManager transactionManager;
+            @Bean(name = "txProxy")
+            public TxProxyFactoryBean txProxyFactoryBean() {
+              TxProxyFactoryBean factoryBean = new TxProxyFactoryBean();
+              factoryBean.setTarget(userServiceImpl);
+              factoryBean.setTransactionManager(transactionManager);
+              factoryBean.setPattern("upgradeLevels");
+              factoryBean.setServiceInterface(UserService.class);
+              return factoryBean;
+            }          
+          }
+          </pre>
+          </details>
+          <details markdown="1">
+          <summary>테스트 코드 접기/펼치기</summary>
+          <pre>
+          @RunWith(SpringRunner.class)
+          @SpringBootTest
+          @Slf4j
+          class UserServiceTest {
+            @Autowired private TxProxyFactoryBean txProxy;
+            @Test
+            public void upgradeAllOrNothing() throws Exception {
+              TestUserService testUserService = new TestUserService(userList.get(3).getId());
+              testUserService.setUserDao(this.userDao);
+              testUserService.setMailSender(mailSender);
+              txProxy.setTarget(testUserService);
+              UserService txProxyUserService = (UserService)txProxy.getObject();
+          
+              userDao.deleteAll();
+              userList.forEach(user -> userDao.add(user));
+              try {
+                txProxyUserService.upgradeLevels();
+                fail("TestUserServiceException expected");
+              } catch (TestUserServiceException e) {
+              }
+              checkLevelUpgraded(userList.get(1), false);
+            }
+            static class TestUserService extends UserServiceImpl {
+              private String id;
+              public TestUserService(String id) {
+                this.id = id;
+              }
+              protected void upgradeLevel(User user) {
+                if (user.getId().equals(this.id)) {
+                  throw new TestUserServiceException();
+                }
+                super.upgradeLevel(user);
+              }
+            }
+          }
+          </pre>
+          </details>

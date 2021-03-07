@@ -16,6 +16,7 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.transaction.PlatformTransactionManager;
 import toby.common.exception.DuplicateUserIdException;
 import toby.common.exception.TestUserServiceException;
+import toby.common.factorybean.TxProxyFactoryBean;
 import toby.dao.UserDao;
 import toby.domain.Level;
 import toby.domain.User;
@@ -44,6 +45,7 @@ class UserServiceTest {
   @Autowired private UserDao userDao;
   @Autowired private PlatformTransactionManager transactionManager;
   @Autowired private MailSender mailSender;
+  @Autowired private TxProxyFactoryBean txProxy;
 
   private List<User> userList;
 
@@ -171,17 +173,17 @@ class UserServiceTest {
   }
 
   @Test
-  public void upgradeAllOrNothing() {
+  public void upgradeAllOrNothing() throws Exception {
     TestUserService testUserService = new TestUserService(userList.get(3).getId());
     testUserService.setUserDao(this.userDao);
     testUserService.setMailSender(mailSender);
-    UserServiceTx userServiceTx = new UserServiceTx();
-    userServiceTx.setTransactionManager(transactionManager);
-    userServiceTx.setUserService(testUserService);
+    txProxy.setTarget(testUserService);
+    UserService txProxyUserService = (UserService)txProxy.getObject();
+
     userDao.deleteAll();
     userList.forEach(user -> userDao.add(user));
     try {
-      userServiceTx.upgradeLevels();
+      txProxyUserService.upgradeLevels();
       fail("TestUserServiceException expected");
     } catch (TestUserServiceException e) {
     }
