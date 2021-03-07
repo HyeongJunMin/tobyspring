@@ -381,11 +381,11 @@
           <summary>FactoryBean코드 접기/펼치기</summary>
           <pre>
           @Setter
-          public class TxProxyFactoryBean implements FactoryBean<Object> {
+          public class TxProxyFactoryBean implements FactoryBean&lt;Object&gt; {
             private Object target;
             private PlatformTransactionManager transactionManager;
             private String pattern;
-            private Class<?> serviceInterface;          
+            private Class&lt;?&gt; serviceInterface;          
             // FactoryBean 구현 메서드
             @Override
             public Object getObject() throws Exception {
@@ -397,7 +397,7 @@
                       new Class[]{serviceInterface},
                       txHandler);
             }
-            public Class<?> getObjectType() {
+            public Class&lt;?&gt; getObjectType() {
               return serviceInterface;
             }
               public boolean isSingleton () {
@@ -407,7 +407,7 @@
             }
           }
           </pre>
-          </details>
+          </details>          
         - <details markdown="1">
           <summary>Config 코드 접기/펼치기</summary>
           <pre>
