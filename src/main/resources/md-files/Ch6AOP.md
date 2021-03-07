@@ -408,7 +408,7 @@
           }
           </pre>
           </details>
-          <details markdown="1">
+        - <details markdown="1">
           <summary>Config 코드 접기/펼치기</summary>
           <pre>
           @Configuration
@@ -426,7 +426,7 @@
             }          
           }
           </pre>
-          </details>
+        - </details>
           <details markdown="1">
           <summary>테스트 코드 접기/펼치기</summary>
           <pre>
