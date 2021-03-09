@@ -205,7 +205,7 @@ class UserServiceTest {
   }
 
   @Test
-  @DirtiesContext // 컨텐스트의 DI 설정을 변경하는 테스트라는 것을 표현
+  @DirtiesContext // 컨텐스트의 DI 설정을 변경하는 테스트라는 것을 표현. 내 프로젝트에서는 이 어노테이션이 없어도 실행된다.
   public void upgradeLevelsWithMockMailSender() throws Exception {
     userDao.deleteAll();
     userList.forEach(user -> userDao.add(user));
