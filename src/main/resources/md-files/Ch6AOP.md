@@ -14,6 +14,9 @@
 > 3. 장점 : 
 > ```
 > 
+> 어드바이스 : 스프링에서 타깃 객체에 적용할 부가기능을 담은 객체
+>
+> 포인트컷 : 메서드 선정 알고리즘을 담은 객체
 
 
 ### 1. 트랜잭션 코드의 분리
@@ -499,3 +502,64 @@ AOP 냄새가 나기 시작했다.
   - AOP 냄새가 난다.
 AOP? 중복되는 기능을 코드 중복 없이 동작하게 하는 방법?
 ```
+### 4. 스프링의 프록시 팩토리 빈
+1. ProxyFactoryBean
+    - 스프링은 일관된 방법으로 프록시를 만들 수 있게 도와주는 추상레이어를 제공한다.
+    - ProxyFactoryBean : 프록시를 생성해서 빈 객체로 등록하게 해주는 팩토리 빈이다.
+    - ProxyFactoryBean을 이용한 다이내믹 프록시 테스트(6-41)
+    - ProxyFactoryBean에 타깃 객체를 설정하고 부가기능을 추가한 다음 ProxyFactoryBean에서 설정한 객체를 빼오는식
+    - <details markdown="1">
+      <summary>테스트 코드 접기/펼치기</summary>
+      <pre>
+      public class HelloProxyTest {
+        @Test
+        public void proxyFactoryBean() {
+          ProxyFactoryBean pfBean = new ProxyFactoryBean();
+          pfBean.setTarget(new HelloTarget()); //타깃 설정
+          pfBean.addAdvice(new UppercaseAdvice()); //부가기능 추가
+          Hello proxiedHello = (Hello) pfBean.getObject(); //FacotryBean이므로 생성된 프록시를 가져온다.      
+          assertThat(proxiedHello.sayHello("Toby")).isEqualTo("HELLO TOBY");
+          assertThat(proxiedHello.sayHi("Toby")).isEqualTo("HI TOBY");
+          assertThat(proxiedHello.sayThankYou("Toby")).isEqualTo("THANKYOU TOBY");
+        }      
+        static class UppercaseAdvice implements MethodInterceptor {
+          public Object invoke(MethodInvocation invocation) throws Throwable {
+            String ret = (String)invocation.proceed(); //타깃을 알고 있기에 타깃 오브젝트를 전달할 필요가 없다.
+            return ret.toUpperCase(); //부가기능 적용
+          }
+        }      
+      }
+      </pre>
+      </details>
+    - 어드바이저 : 어드바이스(부가기능)와 포인트컷(메서드 선정 알고리즘)을 묶은 객체
+    - 어드바이스 : 타깃이 필요 없는 순수한 부가기능
+        - UppercaseAdvice에는 타깃 객체가 등장하지 않는다.(setTarget 했기 때문)
+        - addAdvice : 여러 개의 MethodInterceptor(부가기능)를 추가할 수 있다.
+        - 어드바이스 : 타깃 객체에 종속되지 않는 순수한 부가기능을 담은 객체
+    - 포인트컷 : 부가기능 적용 대상 메서드 선정 방법
+        - TxProxyFactoryBean에서는 대상 메서드를 setPattern으로 설정
+        - MethodInterceptor 객체는 타깃 정보를 갖고 있지 않으므로 메서드 패턴으로 대상 메서드를 선택하는 방식은 사용할 수 없다.
+        - 프록시에 부가기능 적용 대상 메서드를 선택하는 기능을 넣으면 된다.
+        - 어드바이스가 템플릿이 되고 MethodInvocation 객체가 콜백이 되는 식
+        - 스프링이 제공하는 NameMatchMethodPointcut과 UppercaseAdvice 활용 테스트 코드
+        - <details markdown="1">
+          <summary>테스트 코드 접기/펼치기</summary>
+          <pre>
+          @Test
+          public void pointcutAdvisor() {
+            ProxyFactoryBean pfBean = new ProxyFactoryBean();
+            pfBean.setTarget(new HelloTarget());
+            // 메서드 이름을 비교해서 대상을 선정하는 알고리즘을 제공하는 포인트컷 객체
+            NameMatchMethodPointcut pointcut = new NameMatchMethodPointcut();
+            pointcut.setMappedName("sayH*");
+            // 포인트컷과 어드바이스를 advisor로 묶어서 한 번에 추가
+            // 묶는 이유? 어떤 어드바이스에 대해 어떤 포인트컷을 사용할 지 명확하게 구분하기 위해
+            // 여러 개의 어드바이스와 포인트컷이 추가될 수 있기 때문
+            pfBean.addAdvisor(new DefaultPointcutAdvisor(pointcut, new UppercaseAdvice()));
+            Hello proxiedHello = (Hello) pfBean.getObject();
+            assertThat(proxiedHello.sayHello("Toby")).isEqualTo("HELLO TOBY");
+            assertThat(proxiedHello.sayHi("Toby")).isEqualTo("HI TOBY");
+            assertThat(proxiedHello.sayThankYou("Toby")).isEqualTo("ThankYou Toby");
+          }
+          </pre>
+          </details>
