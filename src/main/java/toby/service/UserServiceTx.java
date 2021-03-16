@@ -2,13 +2,14 @@ package toby.service;
 
 import lombok.Setter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mail.MailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 import toby.domain.User;
 
-@Service("userService")
+@Service("userServiceTx")
 @Setter
 public class UserServiceTx implements UserService {
 
@@ -17,6 +18,9 @@ public class UserServiceTx implements UserService {
 
   @Autowired
   private UserServiceImpl userService;
+
+  @Autowired
+  private MailSender mailSender;
 
   public void add(User user) {
     userService.add(user);

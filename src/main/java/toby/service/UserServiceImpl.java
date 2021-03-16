@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Setter
-@Service("userServiceImpl")
+@Service("userService")
 @Slf4j
 public class UserServiceImpl implements UserService {
 

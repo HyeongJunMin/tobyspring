@@ -8,12 +8,11 @@ import toby.common.factorybean.Message;
 import toby.common.factorybean.MessageFactoryBean;
 import toby.common.factorybean.TxProxyFactoryBean;
 import toby.service.UserService;
-import toby.service.UserServiceImpl;
 
 @Configuration
 public class FactoryBeanConfig {
 
-  @Autowired private UserServiceImpl userServiceImpl;
+  @Autowired private UserService userService;
   @Autowired private PlatformTransactionManager transactionManager;
 
   @Bean(name = "message")
@@ -31,7 +30,7 @@ public class FactoryBeanConfig {
   @Bean(name = "txProxy")
   public TxProxyFactoryBean txProxyFactoryBean() {
     TxProxyFactoryBean factoryBean = new TxProxyFactoryBean();
-    factoryBean.setTarget(userServiceImpl);
+    factoryBean.setTarget(userService);
     factoryBean.setTransactionManager(transactionManager);
     factoryBean.setPattern("upgradeLevels");
     factoryBean.setServiceInterface(UserService.class);

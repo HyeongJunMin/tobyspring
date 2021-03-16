@@ -2,12 +2,14 @@ package toby.service;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.Ignore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.mail.MailException;
 import org.springframework.mail.MailSender;
 import org.springframework.mail.SimpleMailMessage;
@@ -41,11 +43,12 @@ import static toby.service.UserServiceImpl.RECOMMEND_COUNT_FOR_GOLD;
 class UserServiceTest {
 
   @Autowired private UserService userService;
-  @Autowired private UserServiceImpl userServiceImpl;
   @Autowired private UserDao userDao;
   @Autowired private PlatformTransactionManager transactionManager;
   @Autowired private MailSender mailSender;
   @Autowired private TxProxyFactoryBean txProxy;
+  @Autowired private ApplicationContext context;
+  @Autowired private UserService testUserServiceImpl;
 
   private List<User> userList;
 
@@ -150,6 +153,7 @@ class UserServiceTest {
   }
 
   @Test
+  @Ignore("심심해서 만들어본거")
   public void multiThread() throws ExecutionException, InterruptedException {
     userDao.deleteAll();
     User user = new User("5555", "예림이그패봐봐", "pass", Level.BASIC, 0, 0, "");
@@ -173,20 +177,14 @@ class UserServiceTest {
   }
 
   @Test
-  public void upgradeAllOrNothing() throws Exception {
-    TestUserService testUserService = new TestUserService(userList.get(3).getId());
-    testUserService.setUserDao(this.userDao);
-    testUserService.setMailSender(mailSender);
-    txProxy.setTarget(testUserService);
-    UserService txProxyUserService = (UserService)txProxy.getObject();
-
+  public void upgradeAllOrNothing() {
     userDao.deleteAll();
-    userList.forEach(user -> userDao.add(user));
+    userDao.addAll(userList);
+    testUserServiceImpl.setMailSender(mailSender);
     try {
-      txProxyUserService.upgradeLevels();
+      testUserServiceImpl.upgradeLevels();
       fail("TestUserServiceException expected");
-    } catch (TestUserServiceException e) {
-    }
+    } catch (TestUserServiceException e) { }
     checkLevelUpgraded(userList.get(1), false);
   }
 
@@ -210,7 +208,7 @@ class UserServiceTest {
     userDao.deleteAll();
     userList.forEach(user -> userDao.add(user));
     MockMailSender mockMailSender = new MockMailSender();
-    userServiceImpl.setMailSender(mockMailSender);
+    userService.setMailSender(mockMailSender);
     userService.upgradeLevels();
     checkLevelUpgraded(userList.get(0), false);
     checkLevelUpgraded(userList.get(1), true);
@@ -247,22 +245,6 @@ class UserServiceTest {
     public User getUserByName(String name) { throw new UnsupportedOperationException(); }
     public void deleteAll() { throw new UnsupportedOperationException(); }
     public int getCount() { throw new UnsupportedOperationException(); }
-  }
-
-  static class TestUserService extends UserServiceImpl {
-
-    private String id;
-    public TestUserService(String id) {
-      this.id = id;
-    }
-
-    protected void upgradeLevel(User user) {
-      if (user.getId().equals(this.id)) {
-        throw new TestUserServiceException();
-      }
-      super.upgradeLevel(user);
-    }
-
   }
 
 }

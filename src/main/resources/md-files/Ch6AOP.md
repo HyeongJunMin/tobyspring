@@ -563,3 +563,248 @@ AOP? 중복되는 기능을 코드 중복 없이 동작하게 하는 방법?
           }
           </pre>
           </details>
+2. ProxyFactoryBean 적용
+    - JDK 다이내믹 프록시의 구조를 그대로 이용해서 만들었던 TxProxyFactoryBean을 스프링이 제공하는 ProxyFactoryBean을 이용하도록 수정
+    - 어드바이스와 포인트컷의 재사용
+        - ProxyFactoryBean은 스프링의 DI, 템플릿/콜백 패턴, 서비스 추상화 등의 기법이 모두 적용된 것이다.
+        - 아래 예제코드에서는 UserService만 적용했지만 그 외에 다른 클래스도 이름 패턴만 지정해서 ProxyFactoryBean에 등록해주면 된다.
+    - TransactionAdvice
+        - 예제코드
+        - <details markdown="1">
+          <summary>테스트 코드 접기/펼치기</summary>
+          <pre>
+          @Setter
+          public class TransactionAdvice implements MethodInterceptor {
+            PlatformTransactionManager transactionManager;
+            // 타깃을 호출하는 기능을 가진 콜백 객체를 프록시로부터 받는다.
+            // 덕분에 어드바이스는 특정 타깃에 의존하지 않고 재사용할 수 있다.
+            public Object invoke(MethodInvocation methodInvocation) throws Throwable {
+              TransactionStatus status = this.transactionManager.getTransaction(new DefaultTransactionDefinition());
+              try {
+                // 콜백을 호출해서 타깃의 메서드를 실행
+                // 타깃 메서드 호출 전후로 필요한 부가기능을 넣을 수 있다.
+                // 경우에 따라 타깃이 아예 호출되지 않게끔 하거나 재시도를 위한 반복적 호출도 가능하다.
+                Object ret = methodInvocation.proceed();
+                this.transactionManager.commit(status);
+                return ret;
+                // JDK 다이내픽 프록시가 제공하는 Method와 달리
+                // 스프링의 MethodInvocation을 통한 타깃 호출은 예외가 포장되지 않고 타깃에서 보낸 그대로 전달된다.
+              } catch (RuntimeException e) {
+                this.transactionManager.rollback(status);
+                throw e;
+              }
+            }
+          }
+          </pre>
+          </details>
+    - 스프링 XML 설정파일
+        - 코드는 손볼곳이 없고 설정만 해주면 된다.
+        - 어드바이스를 등록한다.
+            - 설정파일(Java Config)
+            - <details markdown="1">
+              <summary>테스트 코드 접기/펼치기</summary>
+              <pre>
+              @Configuration
+              @RequiredArgsConstructor
+              public class AopConfig {
+                private final PlatformTransactionManager transactionManager;
+                private final UserService userService;
+                @Bean
+                public TransactionAdvice transactionAdvice() {
+                  return new TransactionAdvice(transactionManager);
+                }
+                @Bean
+                public NameMatchMethodPointcut transactionPointcut() {
+                  NameMatchMethodPointcut pointcut = new NameMatchMethodPointcut();
+                  pointcut.setMappedName("upgrade*");
+                  return pointcut;
+                }
+                @Bean
+                public DefaultPointcutAdvisor transactionAdvisor() {
+                  DefaultPointcutAdvisor pointcutAdvisor = new DefaultPointcutAdvisor();
+                  pointcutAdvisor.setAdvice(transactionAdvice());
+                  pointcutAdvisor.setPointcut(transactionPointcut());
+                  return pointcutAdvisor;
+                }
+                @Bean
+                public ProxyFactoryBean userServiceProxyFactoryBean() {
+                  ProxyFactoryBean factoryBean = new ProxyFactoryBean();
+                  factoryBean.setTarget(userService);
+                  factoryBean.setInterceptorNames("transactionAdvisor");
+                  return factoryBean;
+                }
+              }
+              </pre>
+              </details>
+            - 테스트코드
+            - <details markdown="1">
+              <summary>테스트 코드 접기/펼치기</summary>
+              <pre>
+              @Test
+              public void upgradeAllOrNothing() {
+                TestUserService testUserService = new TestUserService(userList.get(3).getId());
+                testUserService.setUserDao(this.userDao);
+                testUserService.setMailSender(mailSender);
+                ProxyFactoryBean proxyFactoryBean = context.getBean("&userServiceProxyFactoryBean", ProxyFactoryBean.class);
+                proxyFactoryBean.setTarget(testUserService);
+                UserService txUserService = (UserService) proxyFactoryBean.getObject();
+                try {
+                  txUserService.upgradeLevels();
+                  fail("TestUserServiceException expected");
+                } catch (TestUserServiceException e) { }
+                checkLevelUpgraded(userList.get(1), false);
+              }
+              </pre>
+              </details>
+
+### 5. 스프링 AOP
+- 지금까지 : 반복적으로 등장하는 트랜잭션 코드를 깔끔하고 효과적으로 분리
+    - 투명한 부가기능이다 : 기존 설계와 코드에는 영향을 주지 않음(있는 듯 없는 듯)
+1. 자동 프록시 생성
+    - 아직 남은 문제 : 설정정보를 계속 추가해주는 번거로움
+    - 중복 문제의 접근 방법
+        - 지금까지 살펴본 방법에는 한 번에 여러 빈에 프록시를 적용할 만한 방법은 없었다.
+    - 빈 후처리기를 이용한 자동 프록시 생성기
+        - 빈 후처리기 : 빈 객체로 만든 후에 그 빈 객체를 다시 가공할 수 있게 해준다.
+        - 빈 후처리기를 빈으로 등록하면 사용할 수 있다.
+        - 빈 객체 일부를 프록시로 포장하고 프록시를 빈으로 대신 등록할 수도 있다.
+        - 빈 후처리기의 동작
+        - ```
+          1. 빈 후처리기가 등록돼있으면 스프링은 빈 객체를 만들 때 마다 후처리기에게 빈을 보낸다.
+          2. 빈 후처리기는 등록된 어드바이저의 포인트컷을 이용해 전달받은 빈이 프록시 적용 대상인지 확인한다.
+          3. 적용 대상이면? 내장된 프록시 생성기에게 현재 빈에 대한 프록시를 만들게 하고 어드바이저를 연결한다.
+          4. 프록시를 만들었으면? 전달받은 빈 객체 대신 만든 프록시 객체를 돌려준다.
+          5. 스프링은 돌려받은 프록시 객체를 빈으로 등록하고 사용한다.
+          ```
+    - 확장된 포인트컷
+        - 포인트컷은 클래스 필터와 메서드 매처 두 가지를 돌려주는 메서드를 갖고있다.
+        - 모든 빈에 대해 프록시 적용 대상인지 판단해야 하는 상황에서는 클래스와 메서드 선정 알고리즘을 모두 갖는 포인트컷이 필요하다.
+    - 포인트컷 테스트
+        - 확장 포인트컷 학습 테스트 코드
+        - <details markdown="1">
+          <summary>테스트 코드 접기/펼치기</summary>
+          <pre>
+          @Test
+          @Description("확장 포인트컷 테스트 480p")
+          public void classNamePointcutAdvisor() {
+            // 포인트컷 준비
+            NameMatchMethodPointcut pointcut = new NameMatchMethodPointcut() {
+              public ClassFilter getClassFilter() {
+                // 클래스 이름이 HelloT로 시작하는 것만 선택
+                return aClass -> aClass.getSimpleName().startsWith("HelloT");
+              }
+            };
+            // sayH로 시작하는 메서드만 선택
+            pointcut.setMappedName("sayH*");
+            checkAdviced(new HelloTarget(), pointcut, true);
+            checkAdviced(new HelloWorld(), pointcut, false);
+            checkAdviced(new HelloToby(), pointcut, true);
+          }          
+          class HelloWorld extends HelloTarget { }
+          class HelloToby extends HelloTarget { }          
+          private void checkAdviced(Object target, Pointcut pointcut, boolean adviced) {
+            ProxyFactoryBean pfBean = new ProxyFactoryBean();
+            pfBean.setTarget(target);
+            pfBean.addAdvisor(new DefaultPointcutAdvisor(pointcut, new UppercaseAdvice()));
+            Hello proxiedHello = (Hello) pfBean.getObject();
+            if (adviced) {
+              assertThat(proxiedHello.sayHello("Toby")).isEqualTo("HELLO TOBY");
+              assertThat(proxiedHello.sayHi("Toby")).isEqualTo("HI TOBY");
+              assertThat(proxiedHello.sayThankYou("Toby")).isEqualTo("ThankYou Toby");
+            } else {
+              assertThat(proxiedHello.sayHello("Toby")).isEqualTo("Hello Toby");
+              assertThat(proxiedHello.sayHi("Toby")).isEqualTo("Hi Toby");
+              assertThat(proxiedHello.sayThankYou("Toby")).isEqualTo("ThankYou Toby");
+            }
+          }
+          </pre>
+          </details>
+2. DefaultAdvisorAutoProxyCreator의 적용
+    - 클래스 필터를 적용한 포인트컷 작성
+        - 주어진 이름 패턴을 가지고 클래스를 찾아내는 ClassFilter를 추가하도록 만들 것이다.
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          public class NameMatchClassMethodPointcut extends NameMatchMethodPointcut {
+            public void setMappedClassName(String mappedClassName) {
+              // 매개변수로 받은 클래스 이름을 이용한 필터
+              this.setClassFilter(new SimpleClassFilter(mappedClassName));
+            }
+            static class SimpleClassFilter implements ClassFilter {
+              private final String mappedName;
+              public SimpleClassFilter(String mappedName) {
+                this.mappedName = mappedName;
+              }
+              @Override
+              public boolean matches(Class<?> clazz) {
+                if (mappedName.startsWith("Test") || clazz.getSimpleName().startsWith("Test")) {
+                  System.out.println("!!!!!!!!!!!");
+                }
+                if (mappedName.startsWith("User") || clazz.getSimpleName().startsWith("User")) {
+                  System.out.println("!!!!!!!!!!!");
+                }
+                System.out.println(String.format("mappedName : %s, classSimpleName : %s", mappedName, clazz.getSimpleName()));
+                return PatternMatchUtils.simpleMatch(mappedName, clazz.getSimpleName());
+              }
+            }
+          }
+          </pre>
+          </details>
+    - 어드바이저를 이용하는 자동 프록시 생성기 등록, 포인트컷 등록
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          @Bean
+          public NameMatchClassMethodPointcut transactionPointcut() {
+            NameMatchClassMethodPointcut pointcut = new NameMatchClassMethodPointcut();
+            // 클래스 이름 패턴
+            pointcut.setMappedClassName("*ServiceImpl");
+            // 메서드 이름 패턴
+            pointcut.setMappedName("upgrade*");
+            return pointcut;
+          }          
+          @Bean
+          public DefaultPointcutAdvisor transactionAdvisor() {
+            DefaultPointcutAdvisor pointcutAdvisor = new DefaultPointcutAdvisor();
+            pointcutAdvisor.setAdvice(transactionAdvice());
+            pointcutAdvisor.setPointcut(transactionPointcut());
+            return pointcutAdvisor;
+          }          
+          @Bean
+          public ProxyFactoryBean userServiceProxyFactoryBean() {
+            transactionAdvisor();
+            ProxyFactoryBean factoryBean = new ProxyFactoryBean();
+            factoryBean.setTarget(userService);
+            factoryBean.setInterceptorNames("transactionAdvisor");
+            return factoryBean;
+          }
+          </pre>
+          </details>
+    - 테스트코드
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          @Test
+          public void upgradeAllOrNothing() {
+            userDao.deleteAll();
+            userDao.addAll(userList);
+            testUserServiceImpl.setMailSender(mailSender);
+            try {
+              testUserServiceImpl.upgradeLevels();
+              fail("TestUserServiceException expected");
+            } catch (TestUserServiceException e) { }
+            checkLevelUpgraded(userList.get(1), false);
+          }
+          </pre>
+          </details>
+        
+
+
+
+
+
+<details markdown="1">
+<summary>테스트 코드 접기/펼치기</summary>
+<pre>
+</pre>
+</details>
