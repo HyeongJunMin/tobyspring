@@ -1,6 +1,7 @@
 package toby.common.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.aop.aspectj.AspectJExpressionPointcut;
 import org.springframework.aop.framework.ProxyFactoryBean;
 import org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator;
 import org.springframework.aop.support.DefaultPointcutAdvisor;
@@ -23,13 +24,19 @@ public class AopConfig {
     return new TransactionAdvice(transactionManager);
   }
 
+//  @Bean
+//  public NameMatchClassMethodPointcut transactionPointcut() {
+//    NameMatchClassMethodPointcut pointcut = new NameMatchClassMethodPointcut();
+//    // 클래스 이름 패턴
+//    pointcut.setMappedClassName("*ServiceImpl");
+//    // 메서드 이름 패턴
+//    pointcut.setMappedName("upgrade*");
+//    return pointcut;
+//  }
   @Bean
-  public NameMatchClassMethodPointcut transactionPointcut() {
-    NameMatchClassMethodPointcut pointcut = new NameMatchClassMethodPointcut();
-    // 클래스 이름 패턴
-    pointcut.setMappedClassName("*ServiceImpl");
-    // 메서드 이름 패턴
-    pointcut.setMappedName("upgrade*");
+  public AspectJExpressionPointcut transactionPointcut() {
+    AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+    pointcut.setExpression("execution(* *..*ServiceImpl.upgrade*(..))");
     return pointcut;
   }
 

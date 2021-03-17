@@ -797,7 +797,102 @@ AOP? 중복되는 기능을 코드 중복 없이 동작하게 하는 방법?
           }
           </pre>
           </details>
-        
+    - 자동생성 프록시 확인
+        - 포인트컷 클래스 이름 필터를 *NotServiceImpl로 바꿔서 확인
+        - 자동생성된 프록시 확인(testUserService가 프록시로 변경된 객체인지)
+3. 포인트컷 표현식을 이용한 포인트컷
+    - 더 편리한 포인트컷 작성 방법
+    - 포인트컷 표현식
+        - 정규식 같은 일종의 표현식 언어를 사용해서 포인트컷을 작성하는 방시
+        - AspectJExpressionPointcut 클래스 사용
+    - 포인트컷 표현식 문법
+        - ```
+          [] : 옵션(생략가능)
+          | : or조건
+          execution([접근제한자 패턴] 타입패턴1 [타입패턴2.]이름패턴 (타입패턴3 | "..", ...) [throws 예외 패턴])
+          접근제한자 : public, private 등
+          타입패턴1 : 리턴 값의 타입 패턴
+          타입패턴2 : 패키지와 클래스 이름에 대한 패턴. 사용할 때는 '.'으로 연결
+          이름패턴 : 메서드 이름 패턴
+          타입패턴3 : 파라미터의 타입을 순서대로 넣을 수 있다. 와일드 카드 사용 가능
+          예외 패턴 : 예외 이름 패턴
+          ```
+        - 포인트컷 표현식 테스트
+        - <details markdown="1">
+          <summary>테스트 코드 접기/펼치기</summary>
+          <pre>
+          @Test
+          public void methodSignaturePointcut() throws SecurityException, NoSuchMethodException {
+            // aspectjweaver 디펜던시 필요
+            AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+            pointcut.setExpression("execution(public int toby.common.learningtest.Target.minus(int,int)) ");
+            // Target.minus() : 성공
+            assertThat(pointcut.getClassFilter().matches(Target.class) &&
+                    pointcut.getMethodMatcher().matches(Target.class.getMethod("minus", int.class, int.class), null)).isTrue();
+            // Target.plus() : 메서드 매처에서 실패
+            assertThat(pointcut.getClassFilter().matches(Target.class) &&
+                pointcut.getMethodMatcher().matches(Target.class.getMethod("plus", int.class, int.class), null)).isFalse();
+            // Bean.method() : 클래스 매처에서 실패
+            assertThat(pointcut.getClassFilter().matches(Bean.class) &&
+                pointcut.getMethodMatcher().matches(Target.class.getMethod("method"), null)).isFalse();
+          }
+          </pre>
+          </details>
+    - 포인트컷 표현식 테스트
+        - ```
+          // 두 개의 정수형 파라미터를 갖는 minus라는 이름의 모든 메서드를 선정하는 포인트컷
+          execution(int minus(int, int))
+          // 리턴타입 상관없는 포인트컷
+          execution(* minus(int, int))
+          // 파라미터 개수와 타입을 무시하는 포인트컷
+          execution(* minus(..))
+          // 모든 메서드 다 허용
+          execution(* *(..))
+          ```
+        - <details markdown="1">
+          <summary>테스트 코드 접기/펼치기</summary>
+          <pre>
+          @Test
+          public void pointcut() throws NoSuchMethodException {
+            targetClassPointcutMatches("execution(* *(..))", true, true, true, true, true, true);
+            targetClassPointcutMatches("execution(* *(int, int))", false, false, true, true, false, false);
+            targetClassPointcutMatches("execution(* *..*get.*(..))", true, true, true, true, true, false);
+            targetClassPointcutMatches("execution(void *(..))", true, true, false, false, true, true);
+          }
+          // 타깃 클래스 메서드에 대해 포인트컷 선정여부를 검사하는 헬퍼 메서드
+          public void targetClassPointcutMatches(String expression, boolean... expected) throws NoSuchMethodException {
+            pointcutMatches(expression, expected[0], Target.class, "hello");
+            pointcutMatches(expression, expected[1], Target.class, "hello", String.class);
+            pointcutMatches(expression, expected[2], Target.class, "plus", int.class, int.class);
+            pointcutMatches(expression, expected[3], Target.class, "minus", int.class, int.class);
+            pointcutMatches(expression, expected[4], Target.class, "method");
+            pointcutMatches(expression, expected[5], Bean.class, "method");
+          }
+          // 포인트컷과 메서드를 비교해주는 테스트 헬퍼 메서드
+          private void pointcutMatches(String expression, Boolean expected, Class<?> clazz, String methodName, Class<?>... args) throws NoSuchMethodException {
+            AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+            pointcut.setExpression(expression);
+            assertThat(pointcut.getClassFilter().matches(clazz) &&
+                pointcut.getMethodMatcher().matches(clazz.getMethod(methodName, args), null)).isEqualTo(expected);
+          }
+          </pre>
+          </details>
+    - 포인트컷 표현식을 이용하는 포인트컷 적용
+        - ```
+          @Bean
+          public AspectJExpressionPointcut transactionPointcut() {
+            AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+            pointcut.setExpression("execution(* *..*ServiceImpl.upgrade*(..))");
+            return pointcut;
+          }
+          ```
+        - 코드와 설정이 단순해진다.
+        - 문자열로 된 표현식이기 때문에 런타임 시점까지 문법의 검증이나 기능 확인이 불가능하다.
+    - 타입 패턴과 클래스 이름 패턴
+        - TestUserServiceImpl 클래스 이름을 TestUserService로 바꾸면 테스트는 실패하는가?
+        - 슈퍼클래스가 UserServiceImpl이고 인터페이스는 UserService이기 때문에 ServiceImpl로 끝나는 타입 패턴의 조건을 충족한다.
+        - 타입 패턴의 조건을 충족하기 때문에 테스트는 실패하지 않는다.
+
 
 
 

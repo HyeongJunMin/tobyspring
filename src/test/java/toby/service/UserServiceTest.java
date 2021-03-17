@@ -18,6 +18,7 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.transaction.PlatformTransactionManager;
 import toby.common.exception.DuplicateUserIdException;
 import toby.common.exception.TestUserServiceException;
+import toby.common.factorybean.Message;
 import toby.common.factorybean.TxProxyFactoryBean;
 import toby.dao.UserDao;
 import toby.domain.Level;
@@ -186,6 +187,11 @@ class UserServiceTest {
       fail("TestUserServiceException expected");
     } catch (TestUserServiceException e) { }
     checkLevelUpgraded(userList.get(1), false);
+  }
+
+  @Test
+  public void advisorAutoProxyCreator() {
+    assertThat(testUserServiceImpl.getClass().toString().contains("Proxy")).isTrue();
   }
 
   @Getter
