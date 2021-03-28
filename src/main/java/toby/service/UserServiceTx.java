@@ -9,6 +9,8 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 import toby.domain.User;
 
+import java.util.List;
+
 @Service("userServiceTx")
 @Setter
 public class UserServiceTx implements UserService {
@@ -41,4 +43,23 @@ public class UserServiceTx implements UserService {
     userService.createOrIncreaseRecommend(user);
   }
 
+  @Override
+  public User get(String id) {
+    return null;
+  }
+
+  @Override
+  public List<User> getAll() {
+    return null;
+  }
+
+  @Override
+  public void deleteAll() {
+
+  }
+
+  @Override
+  public void update(User user) {
+
+  }
 }

@@ -18,7 +18,6 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.transaction.PlatformTransactionManager;
 import toby.common.exception.DuplicateUserIdException;
 import toby.common.exception.TestUserServiceException;
-import toby.common.factorybean.Message;
 import toby.common.factorybean.TxProxyFactoryBean;
 import toby.dao.UserDao;
 import toby.domain.Level;
@@ -49,7 +48,7 @@ class UserServiceTest {
   @Autowired private MailSender mailSender;
   @Autowired private TxProxyFactoryBean txProxy;
   @Autowired private ApplicationContext context;
-  @Autowired private UserService testUserServiceImpl;
+  @Autowired private UserService testUserService;
 
   private List<User> userList;
 
@@ -181,18 +180,18 @@ class UserServiceTest {
   public void upgradeAllOrNothing() {
     userDao.deleteAll();
     userDao.addAll(userList);
-    testUserServiceImpl.setMailSender(mailSender);
+    testUserService.setMailSender(mailSender);
     try {
-      testUserServiceImpl.upgradeLevels();
+      testUserService.upgradeLevels();
       fail("TestUserServiceException expected");
     } catch (TestUserServiceException e) { }
     checkLevelUpgraded(userList.get(1), false);
   }
 
-  @Test
-  public void advisorAutoProxyCreator() {
-    assertThat(testUserServiceImpl.getClass().toString().contains("Proxy")).isTrue();
-  }
+//  @Test
+//  public void advisorAutoProxyCreator() {
+//    assertThat(testUserServiceImpl.getClass().toString().contains("Proxy")).isTrue();
+//  }
 
   @Getter
   static class MockMailSender implements MailSender {
@@ -224,6 +223,11 @@ class UserServiceTest {
     List<String> requests = mockMailSender.getRequests();
     assertThat(requests.size()).isEqualTo(3);
     assertThat(requests.containsAll(Arrays.asList(userList.get(1).getEmail(), userList.get(3).getEmail(), userList.get(4).getEmail())));
+  }
+
+  @Test
+  public void readOnlyTransactionAttribute() {
+    testUserService.getAll();
   }
 
   static class MockUserDao implements UserDao {

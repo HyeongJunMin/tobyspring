@@ -17,6 +17,8 @@
 > 어드바이스 : 스프링에서 타깃 객체에 적용할 부가기능을 담은 객체
 >
 > 포인트컷 : 메서드 선정 알고리즘을 담은 객체
+>
+> 서비스 계층을 트랜잭션이 시작되고 종료되는 경계로 정했다면, 테스트와 같은 특별한 이유가 아니고는 다른 계층이나 모듈에서 DAO에 직접 접근하는 것은 차단해야 한다.
 
 
 ### 1. 트랜잭션 코드의 분리
@@ -917,3 +919,271 @@ AOP? 중복되는 기능을 코드 중복 없이 동작하게 하는 방법?
  - 더 편한 포인트컷 표현식 활용(aspectjweaver)
  - 결국 빈이 생길 때 마다 포인트컷에 맞는 대상에 트랜잭션 기능이 추가됐고 부가기능이 추가된 빈은 프록시로 존재하게됨
 ```
+4. AOP란 무엇인가?
+    - UserService에 트랜잭션을 적용해온 과정을 정리해보면
+        1. 트랜잭션 서비스 추상화
+            - 트랜잭션 처리에 대한 구체적인 구현 방법을 자유롭게 바꿀 수 있도록 추상화 기법 적용
+            - 서버환경에서 종속되지 않음
+        2. 프록시와 데코레이터 패턴
+            - 비즈니스 로직 코드에 부가기능(트랜잭션) 코드가 보이지 않게됐음
+        3. 다이내믹 프록시와 프록시 팩토리 빈
+            - 부가기능 부여 코드 중복되는 문제 해결(JDK 다이내믹 프록시)
+            - 포인트 컷과 부가기능을 분리해서 여러 프록시에서 공유하도록 설정(프록시 팩토리 빈)
+        4. 자동 프록시 생성 방법과 포인트컷
+            - 트랜잭션 대상 빈 마다 프록시 팩토리빈을 설정해주는 문제 해결(빈 후처리기)
+            - 포인트컷 표현식 활용(aspectjweaver)
+        5. 부가기능의 모듈화
+            - TransactionAdvice라는 이름으로 모듈화
+    - AOP : Aspect Oriented Programmin
+        - ![noaop-withaop](../images/6_aop_1.JPG)
+            - 왼쪽 : 2차원적인 평면 구조에 중복된 부가기능들 분포
+            - 오른쪽 : 3차원 구조에서 부가기능을 다른 면에 존재하도록 설계
+        - AOP
+            - 부가적인 기능을 분리해서 Aspect라는 독특한 모듈로 만들어서 설계하고 개발하는 방법
+            - OOP를 돕는 보조적인 기술
+            - 관점 지향 프로그래밍 : 애플리케잇녀을 특정한 관점을 기준으로 바라볼 수 있게 해준다는 의미
+        - Aspect 
+            - 그 자체로 애플리케이션의 핵심 기능을 담고 있지는 않지만, 애플리케이션을 구성하는 중요한 요소이다.
+            - 핵심기능에 부가되어 의미를 갖는 특별한 모듈이다.
+            - 부가기능이 정의된 어드바이스와 어드바이스의 대상을 결정하는 정보를 담은 포인트컷을 갖는다.
+5. AOP 적용기술
+    - 프록시를 이용한 AOP
+        - 프록시로 만들어서 DI로 연결된 빈 사이에 적용해 타깃의 메서드 호출 과정에 참여해서 부가기능을 제공
+        - 어드바이스가 적용되는 대상은 객체의 메서드이다.
+        - 스프링의 AOP는 프록시 방식의 AOP라고 할 수 있다. : 프록시는 독립적인 부가기능을 타깃 메서드에 다이내믹하게 적용해주기 위한 가장 중요한 역할을 맡음
+    - 바이트코드 생성과 조작을 통한 AOP
+        - 프록시 방식이 아닌 AOP는? AspectJ 프레임워크
+        - 컴파일된 타깃의 클래스 파일 자체를 수정하거나, JVM에 로딩되는 시점을 가로채서 바이트코드를 조작하는 방법 사용
+        - 대부분의 AOP는 프록시 방식으로도 충분하다.
+        - AspectJ는 복잡하지만 더 강력하고 유연함
+6. AOP의 용어
+    - 타깃 : 부가기능을 부여할 대상
+    - 어드바이스 : 부가기능을 담은 모듈
+    - 조인 포인트 : 어드바이스가 적용될 수 있는 위치. 프록시 AOP에서 조인 포인트는 메서드의 실행단계뿐
+    - 포인트컷 : 어드바이스를 적용할 조인 포인트를 선별하는 작업 또는 그 기능을 정의한 모듈
+    - 프록시 : 클라이언트와 타깃 사이에 투명하게 존재하면서 부가기능을 제공하는 객체
+    - 어드바이저 : 포인트컷과 어드바이스를 하나 씩 갖는 객체
+    - 애스펙트 : AOP의 기본 모듈. 스프링의 어드바이저는 아주 단순한 애스펙트라고 볼 수도 있다.
+7. AOP 네임스페이스
+    - 스프링 AOP를 적용하기 위해 추가했던 어드바이저, 포인트컷, 자동 프록시 생성기 같은 빈들은 스프링 컨테이너에 의해 자동으로 인식돼서 특별한 작업을 위해 사용된다.
+    - 스프링의 프록시 방식 AOP를 적용하려면 최소한 네 가지 빈을 등록해야 한다.
+        - 어드바이스 외에는 스프링이 직접 제공하는 클래스를 빈으로 등록하고 프로퍼티 설정만 해준 것
+        1. 자동 프록시 생성기
+        2. 어드바이스
+        3. 포인트컷
+        4. 어드바이저
+    - AOP 네임스페이스
+        - 스프링은 AOP와 관련 태그를 정의해준 aop스키마를 제공한다.
+        - ```
+          transaction-config.xml
+          <?xml version="1.0" encoding="UTF-8"?>          
+          <beans xmlns="http://www.springframework.org/schema/beans"
+          	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          	xmlns:aop="http://www.springframework.org/schema/aop"        
+          	xsi:schemaLocation="http://www.springframework.org/schema/beans          
+          						http://www.springframework.org/schema/beans/spring-beans-3.0.xsd          
+          						http://www.springframework.org/schema/aop
+          						http://www.springframework.org/schema/aop/spring-aop-3.0.xsd"/>
+            ...
+          </beans>
+          ```
+          ```
+          AOP 설정 빈
+          <aop:config>
+            <aop:pointcut id="transactionPointcut" expression="execution(* *..*ServiceImpl.upgrade*(..))" />
+            <aop:advisor advice-ref="transactionAdvice" pointcut-ref="transactionPointcut"/>
+          </aop:config>
+          이전 설정
+          @Bean
+          public TransactionAdvice transactionAdvice() {
+            return new TransactionAdvice(transactionManager);
+          }
+          @Bean
+          public AspectJExpressionPointcut transactionPointcut() {
+            AspectJExpressionPointcut pointcut = new AspectJExpressionPointcut();
+            pointcut.setExpression("execution(* *..*ServiceImpl.upgrade*(..))");
+            return pointcut;
+          }
+          @Bean
+          public DefaultPointcutAdvisor transactionAdvisor() {
+            DefaultPointcutAdvisor pointcutAdvisor = new DefaultPointcutAdvisor();
+            pointcutAdvisor.setAdvice(transactionAdvice());
+            pointcutAdvisor.setPointcut(transactionPointcut());
+            return pointcutAdvisor;
+          }
+          ```
+    - 어드바이저 내장 포인트컷
+        - ```
+          <aop:config>
+            <aop:advisor advice-ref="transactionAdvice" pointcut="execution(* *..*ServiceImpl.upgrade*(..))"/>
+          </aop:config>
+          ```
+### 6. 트랜잭션 속성
+- ```
+  트랜잭션 속성들이 이런게 있다 정도만 알면 될듯
+  포인트컷 마다 속성을 다르게 하면 유지보수성이 몹시 떨어질 듯
+  get~에다가 readOnly붙이는 정도까지는 좋다고 생각함.
+  ```
+- DefaultTransactionDefinition의 용도는?
+1. 트랜잭션 정의
+    - 트랜잭션이라고 모두 같은 방식으로 동작하는 것은 아니다.
+    - 트랜잭션 전파
+        - 트랜잭션 경계에서 이미 진행 중인 트랜잭션이 있을 때 또는 없을 때 어떻게 동작할 것인가를 결정하는 방식
+        - ![noaop-withaop](../images/6_aop_2.JPG)
+        - B는 A트랜잭션에 종속돼야 하는가, 독립적으로 작동해야 하는가를 결정
+        1. PROPAGATION_REQUIRED
+            - 가장 많이 사용되는 전파 속성
+            - 진행 중인 트랜잭션이 없으면 새로 시작하고, 이미 시작된 트랜잭션이 있으면 참여한다.
+        2. PROPAGATION_REQUIRES_NEW
+            - 항상 새로운 트랜잭션을 실행한다.
+        3. PROPAGATION_NOT_SUPPORTED
+            - 진행 중인 트랜잭션이 있어도 무시한다.
+            - 포인트컷을 복잡하게 만들지 않고 특정 기능에만 트랜잭션 적용이 안되도록 설정하고자 할 때 사용
+            - 이러면 더 복잡할거 같은데... config쪽 보는게 아닌 이상 이 메서드에 트랜잭션이 걸려있는지 안걸려있는지 어떻게알아
+    - 격리 수준(Isolation level)
+        - 모든 DB 트랜잭션은 격리수준을 갖고 있어야 한다.
+        - 기본적으로는 DB에 설정되어 있고 DefaultTransactionDefinition도 ISOLATION_DEFAULT이다.
+        - 특별한 작업을 수행하는 메서드의 경우 독자적인 격리수준을 지정할 필요가 있다.
+    - 제한시간
+        - 트랜잭션 수행 제한시간을 설정할 수 있다.
+        - DefaultTransactionDefinition의 기본 설정은 제한시간이 없는 것이다.
+    - 읽기전용
+        - 읽기전용 트랜잭션은 트랜잭션 내에서 데이터조작 시도를 막아줄 수 있다.
+2. 트랜잭션 인터셉터와 트랜잭션 속성
+- ```
+  메서드 별로 다른 트랜잭션 정의를 적용하려면 어드바이스의 기능을 확장해야 한다.  
+  ```
+    - TransactionInterceptor
+        - 스프링이 트랜잭션 경계설정 어드바이스를 편리하게 사용할 수 있도록 만든 인터셉터.
+        - PlatformTransactionMnager와 Properties 타입의 두 가지 프로퍼티를 갖는다.
+        - Properties는 Map타입 객체다. 메서드 패턴에 따라 각기 다른 트랜잭션 속성을 부여하기 위해 Map타입으로 받는다.
+    - 메서드 이름 패턴을 통한 트랜잭션 속성 지정
+        - TransactionInterceptor의 Properties의 키
+        - ```
+          PROPAGATION_NAME // 트랜잭션 전파 방식. 필수값
+          , ISOLATION_NAME // 격리 수준. 생략 가능(deafult=디폴트격리수준)
+          , readOnly // 읽기전용. 생략 가능(default=읽기전용아님)
+          , timeout_NNNN // 제한시간. NNNN은 초단위 시간. 생략 가능
+          , -Exception1 // 체크 예외 중 롤백 대상으로 추가할 예외. 한 개 이상 등록가능
+          , +Exception2 // 런타임 예외지만 롤백시키지 않을 예외. 한 개 이상 등록가능
+          ```
+        - <details markdown="1">
+          <summary>트랜잭션 속성 정의 예시</summary>
+          <pre>
+          @Bean
+          public TransactionInterceptor transactionInterceptor() {
+            TransactionInterceptor interceptor = new TransactionInterceptor();
+            interceptor.setTransactionManager(transactionManager);
+          
+            NameMatchTransactionAttributeSource txAttributeSource = new NameMatchTransactionAttributeSource();
+            Map<String, TransactionAttribute> txMethods = new HashMap();
+          
+            RuleBasedTransactionAttribute txAttributeForAll = new RuleBasedTransactionAttribute();
+            txAttributeForAll.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+            txMethods.put("*", txAttributeForAll);
+          
+            RuleBasedTransactionAttribute txAttributeForGet = new RuleBasedTransactionAttribute();
+            txAttributeForGet.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            txAttributeForGet.setReadOnly(true);
+            txAttributeForGet.setTimeout(30);
+            txMethods.put("get*", txAttributeForGet);
+          
+            RuleBasedTransactionAttribute txAttributeForUpgrade = new RuleBasedTransactionAttribute();
+            txAttributeForUpgrade.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            txAttributeForUpgrade.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
+            txMethods.put("upgrade*", txAttributeForGet);
+          
+            txAttributeSource.setNameMap(txMethods);
+            interceptor.setTransactionAttributeSources(txAttributeSource);
+            return interceptor;
+          }
+          </pre>
+          </details>
+    - tx 네임스페이스를 이용한 설정 방법
+        - ```
+          // transaction-config.xml
+          <?xml version="1.0" encoding="UTF-8"?>          
+          <beans xmlns="http://www.springframework.org/schema/beans"          
+          	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"          
+          	xmlns:aop="http://www.springframework.org/schema/aop"          
+          	xmlns:tx="http://www.springframework.org/schema/tx"          
+          	xmlns:context="http://www.springframework.org/schema/context"          
+          	xsi:schemaLocation="http://www.springframework.org/schema/beans
+         						http://www.springframework.org/schema/beans/spring-beans-3.0.xsd          
+          						http://www.springframework.org/schema/aop          
+          						http://www.springframework.org/schema/aop/spring-aop-3.0.xsd         
+          						http://www.springframework.org/schema/context          
+          						http://www.springframework.org/schema/context/spring-context-3.0.xsd          
+          						http://www.springframework.org/schema/tx           
+          						http://www.springframework.org/schema/tx/spring-tx-3.0.xsd">
+          ...
+          // 오타나면? Enumeration으로 스키마에 값이 정의되어 있기 때문에 XML 유효성검사로 확인 가능하단다.
+          <tx:advice // 이 태그에 의해 TransactionInterceptor 빈이 등록된다. 
+            id="transactionAdvice transaction-manger="transactionManager"> // 트랜잭션 매니저와 빈 아이디가 transactionManager라면 생략 가능\
+            <tx:attributes>
+              <tx:method name="get*" propagation="REQUIRED" read-only="true" timeout="30" />
+              <tx:method name="upgrade*" propagation="REQUIRES_NEW" isolation="SERIALIZABLE" />
+              <tx:method name="*" propagation="REQUIRED" />
+            </tx:attributes>
+          </tx:advice>
+          ```
+3. 포인트컷과 트랜잭션 속성의 적용 전략
+    - 트랜잭션 포인트컷 표현식은 타입 패턴이나 빈 이름을 이용한다.
+        - 트랜잭션 경계로 삼을 클래스들이 모여있는 패키지를 통째로 선택
+        - 클래스 이름에서 일정한 패턴을 찾아서 표현식 결정 : execution(\* \*..\*Service.\*(..))
+        - 스프링의 빈 이름을 이용 : bean(*Service)
+    - 공통된 메서드 이름 규칙을 통해 최소한의 트랜잭션 어드바이스와 속성을 정의한다.
+        - 실제로 하나의 어플리케이션에서 사용할 트랜잭션 속성의 종류는 그다지 다양하지 않다.
+        - 가장 간단한 트랜잭션 속성 부여 방법은 모든 메서드에 대해 디폴트 속성을 지정하는 것이다. 개발 진척도에 따라 단계적으로 추가해주면 됨
+        - get*, find*등 명명규칙을 설정해서 트랜잭션을 적용하면 좋음
+    - 프록시 방식 AOP는 같은 타깃 객체 내의 메서드를 호출할 때는 적용되지 않는다.
+        - 그렇지요? 클라이언트는 프록시를 호출하게끔 설정돼있는데 타깃 객체 내에서는 프록시를 못부르니까
+        - 주의해야 한다는 내용
+4. 트랜잭션 속성 적용
+    - UserService에 적용해보자
+    - 트랜잭션 경계설정의 일원화
+        - \****중요***\* 서비스 계층을 트랜잭션이 시작되고 종료되는 경계로 정했다면, 테스트와 같은 특별한 이유가 아니고는 다른 계층이나 모듈에서 DAO에 직접 접근하는 것은 차단해야 한다.
+        - 아래 메서드를 추가하고 구현해서 User관련 데이터 조작은 UserService라는 트랜잭션 경계를 통해 진행할 경우 모두 트랜잭션을 적용할 수 있게 됐다.
+        - <details markdown="1">
+          <summary>UserService에 메서드 추가</summary>
+          <pre>
+          public interface UserService {
+            // ...
+            User get(String id);
+            List getAll();
+            void deleteAll();
+            void update(User user);
+          }
+          </pre>
+          </details>
+    - 서비스 빈에 적용되는 포인트컷 표현식 등록
+        - 빈 이름을 사용한 표현식을 갖는 포인트컷과 어드바이저
+        - ```
+          <aop:config>
+            <aop:advisor advice-ref="transactionAdvice" pointcut="bean(*Service)"/>
+          </aop:config>
+          ```
+    - 트랜잭션 속성을 가진 트랜잭션 어드바이스 등록
+        - 이전에 설정했던 transaction-config.xml 그대로 두면 끝
+    - 트랜잭션 속성 테스트
+        - 포인트컷을 Bean으로 설정했기 때문에 testUserServiceImpl로 설정했던 빈 이름 testUserService로 변경
+        - 읽기전용 속성 테스트
+        - 안되는데..? h2는 안된다는데 mariadb로 해봐야겠다
+### 7. 애노테이션 트랜잭션 속성과 포인트컷
+1. 트랜잭션 애노테이션
+2. 트랜잭션 애토네이션 적용
+### 8. 트랜잭션 지원 테스트
+1. 선언적 트랜잭션과 트랜잭션 전파 속성
+2. 트랜잭셩 동기화와 테스트
+3. 테스트를 위한 트랜잭션 애노테이션
+### 9. 정리
+진짜 길었다 정말
+
+<details markdown="1">
+<summary>aop ns 설정</summary>
+<pre>
+</pre>
+</details>
+
+
+
