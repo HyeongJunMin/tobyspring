@@ -9,9 +9,9 @@
 >
 > OOP를 대체하려는 것 처럼 보이는 AOP의 등장배경과 스프링이 이것을 도입한 이유, 장점을 이해해야 한다.
 > ```
-> 1. 등장배경 : 
-> 2. 이유 : 
-> 3. 장점 : 
+> 1. 등장배경 : 여러 핵심기능들에 중복되는 부가기능들이 있었음
+> 2. 이유 : 부가기능들을 깔끔하게 뽑아내고 싶었음
+> 3. 장점 : 중복 없이 독립적인 모듈로 구분해냈음. 핵심기능은 순수하게 그 기능을 담은 코드로만 존재하고 독립적으로 살펴볼 수 있도록 구분된 면에 존재하게 됨
 > ```
 > 
 > 어드바이스 : 스프링에서 타깃 객체에 적용할 부가기능을 담은 객체
@@ -19,6 +19,12 @@
 > 포인트컷 : 메서드 선정 알고리즘을 담은 객체
 >
 > 서비스 계층을 트랜잭션이 시작되고 종료되는 경계로 정했다면, 테스트와 같은 특별한 이유가 아니고는 다른 계층이나 모듈에서 DAO에 직접 접근하는 것은 차단해야 한다.
+>
+> 핵심 : 504쪽 AOP: 애스펙트 지향 프로그래밍
+>
+> Aspect : 그 자체로 애플리케이션의 핵심 기능을 담고 있지는 않지만, 애플리케이션을 구성하는 중요한 한 가지 요소이고 핵심기능에 부가되어 의미를 갖는 특별한 모듈을 가리킨다.
+>
+> ![noaop-withaop](../images/6_aop_1.JPG)
 
 
 ### 1. 트랜잭션 코드의 분리
@@ -1169,21 +1175,169 @@ AOP? 중복되는 기능을 코드 중복 없이 동작하게 하는 방법?
         - 포인트컷을 Bean으로 설정했기 때문에 testUserServiceImpl로 설정했던 빈 이름 testUserService로 변경
         - 읽기전용 속성 테스트
         - 안되는데..? h2는 안된다는데 mariadb로 해봐야겠다
+        - mariadb로 하니까 된다(TransientDataAccessResourceException)
 ### 7. 애노테이션 트랜잭션 속성과 포인트컷
 1. 트랜잭션 애노테이션
-2. 트랜잭션 애토네이션 적용
+    - 자바 5에서 등장
+    - ```
+      @Target({ElementType.TYPE, ElementType.METHOD})
+      @Retention(RetentionPolicy.RUNTIME) // 애노테이션 정보가 언제까지 유지될 지 지정. 이렇게 설정하면 런타임 때도 리플렉션을 통해 애노테이션 정보를 얻을 수 있다.
+      @Inherited // 상속을 통해서도 애노테이션 정보를 얻을 수 있게 한다.
+      @Documented
+      public @interface Transactional {
+        // 디폴트 값이 설정되어 있으므로 모두 생략 가능하다.
+      	@AliasFor("transactionManager")	String value() default "";
+      	@AliasFor("value") String transactionManager() default "";
+      	Propagation propagation() default Propagation.REQUIRED;
+      	Isolation isolation() default Isolation.DEFAULT;
+      	int timeout() default TransactionDefinition.TIMEOUT_DEFAULT;
+      	boolean readOnly() default false;
+      	Class<? extends Throwable>[] rollbackFor() default {};
+      	String[] rollbackForClassName() default {};
+      	Class<? extends Throwable>[] noRollbackFor() default {};
+      	String[] noRollbackForClassName() default {};      
+      }
+      ```
+    - 트랜잭션 속성을 이용하는 포인트컷
+        - 포인트컷과 트랜잭션 속성을 애노테이션 하나로 지정할 수 있다.
+        - 메서드 마다 부여하면 코드가 지저분해 질 수 있다.
+    - 대체 정책
+        - 그래서 스프링은 @Transactional을 적용할 때 4단계의 대체 정책을 이용하게 해준다.
+        - 타깃 메서드, 타깃 클래스, 선언 메서드, 선언 타입(클래스, 인터페이스) 순서에 따라 @Transactional이 적용됐는지 확인
+        - ![transactional](../images/6_aop_3.JPG)
+        - 후보 순서 : [5, 6], [4], [2,3], [1]
+    - 트랜잭션 애노테이션 사용을 위한 설정
+        - \<tx:annotation-driven/\>
+        - spring boot에서는 본 적이 없는데? 자동설정인가봄
+2. 트랜잭션 애노테이션 적용
+    - UserService 인터페이스에 애노테이션 적용
+    - <details markdown="1">
+      <summary>UserService 인터페이스</summary>
+      <pre>
+      @Transactional
+      public interface UserService {
+        void add(User user);
+        void upgradeLevels();
+        void createOrIncreaseRecommend(User user);
+        void setMailSender(MailSender mailsender);
+        @Transactional(readOnly = true)
+        User get(String id);
+        @Transactional(readOnly = true)
+        List<User> getAll();
+        void deleteAll();
+        void update(User user);
+      }
+      </pre>
+      </details>
+    - 여기서 구현체 UserServiceImpl에 @Transactional을 붙이면? 대체정책에 따라 readOnly는 무시된다.
 ### 8. 트랜잭션 지원 테스트
 1. 선언적 트랜잭션과 트랜잭션 전파 속성
+    - 선언적 트랜잭션 : AOP를 이용해 코드 외부에서 트랜잭션의 기능을 부여해주고 속성을 지정할 수 있게 하는 방법
+    - 프로그램에 의한 트랜잭션 : 위와 반대로 개별 데이터 기술의 트랜잭션 API를 사용하는 방법
+    - 특별한 경우가 아니라면 선언적 방식의 트랜잭션을 사용하는 것이 바람직하다.
 2. 트랜잭셩 동기화와 테스트
+    - 트랜잭션 매니저와 트랜잭션 동기화
+    - <details markdown="1">
+      <summary>3개의 트랜잭션이 만들어진 테스트코드</summary>
+      <pre>
+      @Test
+      public void transactionSync() {
+        userService.deleteAll();
+        userService.add(userList.get(0));
+        userService.add(userList.get(1));
+      }
+      </pre>
+      </details>
+    - 트랜잭션 매니저를 이용한 테스트용 트랜잭션 제어
+    - <details markdown="1">
+      <summary>3개의 트랜잭션을 합친 테스트코드</summary>
+      <pre>
+      @Test
+      public void transactionSync() {
+        // UserService를 호출하기 전에 트랜잭션을 시작해주면 트랜잭션이 전파되어 통합된다.
+        DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
+        // 트랜잭션 매니저에게 트랜잭션을 요청한다.
+        // 기존에 시작된 트랜잭션이 없으므로 새로운 트랜잭션을 시작시키고 트랜잭션 정보를 돌려준다.
+        // 동시에 만들어진 트랜잭션을 다른 곳에서도 사용할 수 있도록 동기화한다.    
+        TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
+        userService.deleteAll();
+        userService.add(userList.get(0));
+        userService.add(userList.get(1));
+        transactionManager.commit(txStatus);
+      }
+      </pre>
+      </details>
+    - 트랜잭션 동기화 검증용 테스트
+    - <details markdown="1">
+      <summary>read-only 테스트</summary>
+      <pre>
+      @Test(expected = TransientDataAccessResourceException.class)
+      public void transactionSyncReadOnly() {
+        DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
+        txDefinition.setReadOnly(true);
+        TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
+        userService.deleteAll();
+      }
+      </pre>
+      </details>
+    - <details markdown="1">
+      <summary>롤백 테스트</summary>
+      <pre>
+      @Test
+      public void transactionSyncRollBack() {
+        userDao.deleteAll();
+        assertThat(userDao.getAll().size()).isEqualTo(0);
+        DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
+        TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
+        userService.add(userList.get(0));
+        assertThat(userDao.getAll().size()).isEqualTo(1);
+        transactionManager.rollback(txStatus);
+        assertThat(userDao.getAll().size()).isEqualTo(0);
+      }
+      </pre>
+      </details>
+    - 롤백 테스트
+        - 테스트 내의 모든 DB작업을 하나의 트랜잭션 안에서 동작하게 하고, 테스트가 끝나면 무조건 롤백하는 테스트
+        - 테스트의 DB조작으로 인한 사이드이펙트를 방지할 수 있음
+        - 근데 데이터 조금만 복잡해져도 만들기 빡센데
 3. 테스트를 위한 트랜잭션 애노테이션
+    - @Transactional
+        - 테스트에도 @Transactional을 적용할 수 있다.
+        - <details markdown="1">
+          <summary>위에서 봤던 read-only 테스트</summary>
+          <pre>
+          @Test(expected = TransientDataAccessResourceException.class)
+          @Transactional(readOnly = true)
+          public void transactionSyncReadOnly() {
+            userService.deleteAll();
+          }
+          </pre>
+          </details>
+    - @Rollback
+        - @Transactional이 달려있어도 @Rollback(false)해주면 예외가 발생하지 않는 한 트랜잭션은 커밋된다.
+    - @TransactionConfiguration
+        - @Rollback은 메서드에만 붙일 수 있다.
+        - @TransactionalConfiguration(defaultRollback = false) 해주면 죄 @Rollback(false) 되는것
+        - 특정 테스트메서드만 롤백시키고 싶으면 그 메서드에 @Rollback 붙이면 됨
+        - @TransactionalConfiguration deprecated 됐다.
+        - 왜냐? 테스트레벨에서 @Transactional은 항상 rollback=true라서
+        - 테스트클래스에 @Transactional 붙이고 테스트코드 돌리면 전체 테스트 메서드는 rollback된다.
+    - NotTransactional과 Propagation.NEVER
+        - @NotTransactional : @Transactional 설정을 무시하고 트랜잭션을 시작하지 않은 채로 테스트를 시작하게 함
+        - @Transactional(propagation = Propagation.NEVER) : 트랜잭션이 시작되지 않는다.
+    - 효과적인 DB 테스트
+        - 트랜젝션 제어 애노테이션은 통합 테스트를 만들 때 아주 유용하다.
+        - DB가 사용되는 통합테스트는 별도의 클래스로 만들고 롤백되도록 설정하는게 좋다.
+    - 토비 아저씨는 트랜잭션을 예시로 AOP를 설명했고, 설명이 다 끝나니 트랜잭션 설정을 쉽고 깔끔하게 할 수 있는 방법을 알려주셨다. 박수짝짝
 ### 9. 정리
-진짜 길었다 정말
-
-<details markdown="1">
-<summary>aop ns 설정</summary>
-<pre>
-</pre>
-</details>
-
-
-
+- 진짜 길었다 정말
+- 6장에서는 트랜잭션 경계설정 기능을 성격이 다른 비즈니스 로직 클래스에서 분리하고 유연하게 적용할 수 있는 방법을 찾아보면서 애플리케이션에 산재해서 나타나는 부가기능을 모듈화할 수 있는 AOP 기술을 알아봤다.
+- 트랜잭션처럼 환경과 외부 리소스에 영향을 받는 코드를 분리하면 비즈니스 로직에만 충실한 테스트를 만들 수 있다.
+- 목 객체를 이용하면 의존관계 속에 있는 객체도 손쉽게 고립된 테스트로 만들 수 있다.
+- 포인트컷은 AspectJ 포인트컷 표현식을 사용해서 작성하면 편리하다.
+- AOP는 OOP만으로는 모듈화하기 힘든 부가기능을 효과적으로 모듈화하도록 도와주는 기술이다.
+- 스프링은 자주 사용되는 AOP 설정과 트랜잭션 속성을 지정하는 데 사용할 수 있는 전용 태그를 제공한다.
+- AOP를 이용해 트랜잭션 속성을 지정하는 방법
+    1. 포인트컷 표현식과 메서드 이름 패턴을 이용하는 방법
+    2. 타깃에 직접 부여하는 @Transactional 애노테이션 활용
+- @Transactional을 이용한 트랜잭션 속성을 테스트에 적용하면 손쉽게 DB를 사용하는 코드의 테스트를 만들 수 있다.

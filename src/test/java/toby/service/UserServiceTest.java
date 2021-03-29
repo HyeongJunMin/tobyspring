@@ -2,23 +2,26 @@ package toby.service;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.Before;
 import org.junit.Ignore;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ApplicationContext;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.mail.MailException;
 import org.springframework.mail.MailSender;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 import toby.common.exception.DuplicateUserIdException;
 import toby.common.exception.TestUserServiceException;
-import toby.common.factorybean.TxProxyFactoryBean;
 import toby.dao.UserDao;
 import toby.domain.Level;
 import toby.domain.User;
@@ -40,26 +43,25 @@ import static toby.service.UserServiceImpl.RECOMMEND_COUNT_FOR_GOLD;
 @RunWith(SpringRunner.class)
 @SpringBootTest
 @Slf4j
-class UserServiceTest {
+@Transactional
+public class UserServiceTest {
 
   @Autowired private UserService userService;
   @Autowired private UserDao userDao;
   @Autowired private PlatformTransactionManager transactionManager;
   @Autowired private MailSender mailSender;
-  @Autowired private TxProxyFactoryBean txProxy;
-  @Autowired private ApplicationContext context;
   @Autowired private UserService testUserService;
 
   private List<User> userList;
 
-  @BeforeEach
+  @Before
   public void setUp() {
     userList = Arrays.asList(
-        new User("0001", "병진이형은", "pass", Level.BASIC, LOGIN_COUNT_FOR_SILVER - 1, 0, "user1@naver.com"),
-        new User("0002", "나가있어", "pass", Level.BASIC, LOGIN_COUNT_FOR_SILVER, 0, "user2@naver.com"),
-        new User("0003", "뒤지기", "pass", Level.SILVER, 60, RECOMMEND_COUNT_FOR_GOLD - 1, "user3@naver.com"),
-        new User("0004", "싫으면", "pass", Level.SILVER, 60, RECOMMEND_COUNT_FOR_GOLD, "user4@naver.com"),
-        new User("0005", "고맙다태식아", "pass", Level.SILVER, 100, 100, "user5@naver.com")
+        new User("0001", "a", "pass", Level.BASIC, LOGIN_COUNT_FOR_SILVER - 1, 0, "user1@naver.com"),
+        new User("0002", "b", "pass", Level.BASIC, LOGIN_COUNT_FOR_SILVER, 0, "user2@naver.com"),
+        new User("0003", "c", "pass", Level.SILVER, 60, RECOMMEND_COUNT_FOR_GOLD - 1, "user3@naver.com"),
+        new User("0004", "d", "pass", Level.SILVER, 60, RECOMMEND_COUNT_FOR_GOLD, "user4@naver.com"),
+        new User("0005", "e", "pass", Level.SILVER, 100, 100, "user5@naver.com")
     );
   }
 
@@ -188,6 +190,40 @@ class UserServiceTest {
     checkLevelUpgraded(userList.get(1), false);
   }
 
+  @Test
+  public void transactionSync() {
+    // UserService를 호출하기 전에 트랜잭션을 시작해주면 트랜잭션이 전파되어 통합된다.
+    DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
+    // 트랜잭션 매니저에게 트랜잭션을 요청한다.
+    // 기존에 시작된 트랜잭션이 없으므로 새로운 트랜잭션을 시작시키고 트랜잭션 정보를 돌려준다.
+    // 동시에 만들어진 트랜잭션을 다른 곳에서도 사용할 수 있도록 동기화한다.
+    TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
+    userService.deleteAll();
+    userService.add(userList.get(0));
+    userService.add(userList.get(1));
+    transactionManager.commit(txStatus);
+  }
+
+  @Test(expected = TransientDataAccessResourceException.class)
+  public void transactionSyncReadOnly() {
+    DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
+    txDefinition.setReadOnly(true);
+    TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
+    userService.deleteAll();
+  }
+
+  @Test
+  public void transactionSyncRollBack() {
+    userDao.deleteAll();
+    assertThat(userDao.getAll().size()).isEqualTo(0);
+    DefaultTransactionDefinition txDefinition = new DefaultTransactionDefinition();
+    TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
+    userService.add(userList.get(0));
+    assertThat(userDao.getAll().size()).isEqualTo(1);
+    transactionManager.rollback(txStatus);
+    assertThat(userDao.getAll().size()).isEqualTo(0);
+  }
+
 //  @Test
 //  public void advisorAutoProxyCreator() {
 //    assertThat(testUserServiceImpl.getClass().toString().contains("Proxy")).isTrue();
@@ -225,8 +261,10 @@ class UserServiceTest {
     assertThat(requests.containsAll(Arrays.asList(userList.get(1).getEmail(), userList.get(3).getEmail(), userList.get(4).getEmail())));
   }
 
-  @Test
+  @Test(expected = TransientDataAccessResourceException.class)
   public void readOnlyTransactionAttribute() {
+    testUserService.deleteAll();
+    testUserService.add(userList.get(3));
     testUserService.getAll();
   }
 
