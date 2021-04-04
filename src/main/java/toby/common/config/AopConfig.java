@@ -3,7 +3,7 @@ package toby.common.config;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
-import toby.service.UserService;
+import toby.service.user.UserService;
 
 @Configuration
 @RequiredArgsConstructor

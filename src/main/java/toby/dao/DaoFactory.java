@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import toby.service.sql.*;
 
 import javax.sql.DataSource;
 import java.sql.Driver;
@@ -26,7 +27,39 @@ public class DaoFactory {
 
   @Bean
   public UserDao userDao() {
-    return new UserDaoJdbc(dataSource());
+    UserDaoJdbc userDaoJdbc = new UserDaoJdbc(dataSource());
+    userDaoJdbc.setSqlService(sqlService());
+    return userDaoJdbc;
+  }
+
+  @Bean
+  public SqlService sqlService() {
+//    SimpleSqlService sqlService = new SimpleSqlService();
+//    Map<String, String> sqlMap = new HashMap();
+//    sqlMap.put(SqlService.USER_ADD, "insert into users(id, name, password, level, login, recommend, email) values(?, ?, ?, ?, ?, ?, ?)");
+//    sqlMap.put(SqlService.USER_GET, "select * from users where id = ?");
+//    sqlMap.put(SqlService.USER_GET_ALL, "select * from users order by id");
+//    sqlMap.put(SqlService.USER_DELETE_ALL, "delete from users");
+//    sqlMap.put(SqlService.USER_GET_COUNT, "select count(*) from users");
+//    sqlMap.put(SqlService.USER_UPDATE, "update users set name = ?, password = ?, level = ?, login = ?, recommend = ?, email = ? where id = ?");
+//    sqlService.setSqlMap(sqlMap);
+//    return sqlService;
+//    XmlSqlService sqlService = new XmlSqlService(sqlService(), sqlService(), "/sql/sql-map.xml");
+//    HashMapSqlRegistry sqlRegistry = new HashMapSqlRegistry();
+//    JaxbXmlSqlReader sqlReader = new JaxbXmlSqlReader("/sql/sql-map.xml");
+//    XmlSqlService sqlService = new XmlSqlService(sqlRegistry, sqlReader);
+    DefaultSqlService sqlService = new DefaultSqlService();
+    return sqlService;
+  }
+
+  @Bean
+  public SqlRegistry sqlRegistry() {
+    return new HashMapSqlRegistry();
+  }
+
+  @Bean
+  public SqlReader sqlReader() {
+    return new JaxbXmlSqlReader();
   }
 
   @Bean

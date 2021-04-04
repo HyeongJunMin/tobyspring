@@ -1,4 +1,4 @@
-package toby.service;
+package toby.service.user;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

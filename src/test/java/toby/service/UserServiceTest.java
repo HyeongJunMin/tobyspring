@@ -14,7 +14,6 @@ import org.springframework.mail.MailException;
 import org.springframework.mail.MailSender;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
@@ -25,6 +24,8 @@ import toby.common.exception.TestUserServiceException;
 import toby.dao.UserDao;
 import toby.domain.Level;
 import toby.domain.User;
+import toby.service.user.UserService;
+import toby.service.user.UserServiceImpl;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,8 +38,8 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.Mockito.*;
-import static toby.service.UserServiceImpl.LOGIN_COUNT_FOR_SILVER;
-import static toby.service.UserServiceImpl.RECOMMEND_COUNT_FOR_GOLD;
+import static toby.service.user.UserServiceImpl.LOGIN_COUNT_FOR_SILVER;
+import static toby.service.user.UserServiceImpl.RECOMMEND_COUNT_FOR_GOLD;
 
 @RunWith(SpringRunner.class)
 @SpringBootTest

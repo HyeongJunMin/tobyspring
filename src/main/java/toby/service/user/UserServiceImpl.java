@@ -1,4 +1,4 @@
-package toby.service;
+package toby.service.user;
 
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;

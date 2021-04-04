@@ -1,27 +1,32 @@
 package toby.dao;
 
+import lombok.Setter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.annotation.Transactional;
 import toby.common.exception.DuplicateUserIdException;
 import toby.domain.Level;
 import toby.domain.User;
+import toby.service.sql.SqlService;
 
 import javax.sql.DataSource;
 import java.sql.SQLException;
 import java.util.List;
 
+@Setter
 public class UserDaoJdbc implements UserDao {
 
   private JdbcTemplate jdbcTemplate;
+  private SqlService sqlService;
 
   public UserDaoJdbc(DataSource dataSource) {
     this.jdbcTemplate = new JdbcTemplate(dataSource);
   }
 
   public void add(final User user) {
-    this.jdbcTemplate.update("insert into users(id, name, password, level, login, recommend, email) values(?, ?, ?, ?, ?, ?, ?)"
-            , user.getId(), user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend(), user.getEmail());
+    this.jdbcTemplate.update(sqlService.getSql(SqlService.USER_ADD)
+            , user.getId(), user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin()
+            , user.getRecommend(), user.getEmail());
   }
 
   @Transactional
@@ -44,7 +49,7 @@ public class UserDaoJdbc implements UserDao {
   }
 
   public User get(String id) {
-    return jdbcTemplate.queryForObject("select * from users where id = ?",
+    return jdbcTemplate.queryForObject(sqlService.getSql(SqlService.USER_GET),
             // SQL에 바인딩 할 파라미터 값. 가변인자 대신 배열 사용
             new Object[] { id },
             // ResultSet 한 로우의 결과를 오브젝트에 매핑해주는 RowMapper콜백
@@ -69,19 +74,19 @@ public class UserDaoJdbc implements UserDao {
   }
 
   public void deleteAll() {
-    this.jdbcTemplate.update("delete from users");
+    this.jdbcTemplate.update(sqlService.getSql(SqlService.USER_DELETE_ALL));
   }
 
   public int getCount() {
-    return jdbcTemplate.queryForObject("select count(*) from users", Integer.class);
+    return jdbcTemplate.queryForObject(sqlService.getSql(SqlService.USER_GET_COUNT), Integer.class);
   }
 
   public List<User> getAll() {
-    return jdbcTemplate.query("select * from users order by id", getUserMapper());
+    return jdbcTemplate.query(sqlService.getSql(SqlService.USER_GET_ALL), getUserMapper());
   }
 
   public void update(User user) {
-    this.jdbcTemplate.update("update users set name = ?, password = ?, level = ?, login = ?, recommend = ?, email = ? where id = ?"
+    this.jdbcTemplate.update(sqlService.getSql(SqlService.USER_UPDATE)
         , user.getName(), user.getPassword(), user.getLevel().intValue(), user.getLogin(), user.getRecommend(), user.getEmail(), user.getId());
   }
 

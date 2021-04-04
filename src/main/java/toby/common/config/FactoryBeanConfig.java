@@ -7,7 +7,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import toby.common.factorybean.Message;
 import toby.common.factorybean.MessageFactoryBean;
 import toby.common.factorybean.TxProxyFactoryBean;
-import toby.service.UserService;
+import toby.service.user.UserService;
 
 @Configuration
 public class FactoryBeanConfig {
