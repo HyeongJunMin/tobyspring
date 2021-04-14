@@ -5,7 +5,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import org.springframework.oxm.Unmarshaller;
 import toby.service.sql.*;
+import org.springframework.oxm.jaxb.Jaxb2Marshaller;
 
 import javax.sql.DataSource;
 import java.sql.Driver;
@@ -48,13 +50,23 @@ public class DaoFactory {
 //    HashMapSqlRegistry sqlRegistry = new HashMapSqlRegistry();
 //    JaxbXmlSqlReader sqlReader = new JaxbXmlSqlReader("/sql/sql-map.xml");
 //    XmlSqlService sqlService = new XmlSqlService(sqlRegistry, sqlReader);
-    DefaultSqlService sqlService = new DefaultSqlService();
+
+//    DefaultSqlService sqlService = new DefaultSqlService();
+//    return sqlService;
+    OxmSqlService sqlService = new OxmSqlService();
+    sqlService.setUnmarshaller(unmarshaller());
+    sqlService.setSqlRegistry(sqlRegistry());
     return sqlService;
   }
 
+//  @Bean
+//  public SqlRegistry sqlRegistry() {
+//    return new HashMapSqlRegistry();
+//  }
+
   @Bean
   public SqlRegistry sqlRegistry() {
-    return new HashMapSqlRegistry();
+    return new MyUpdatableSqlRegistry();
   }
 
   @Bean
@@ -88,5 +100,19 @@ public class DaoFactory {
 //  public JdbcContext jdbcContext() {
 //    return new JdbcContext(dataSource());
 //  }
+
+//  @Bean
+//  public Unmarshaller unmarshaller() {
+//    Jaxb2Marshaller marshaller = new Jaxb2Marshaller();
+//    marshaller.setContextPath("toby.service.sql");
+//    return marshaller;
+//  }
+
+  @Bean
+  public Unmarshaller unmarshaller() {
+    Jaxb2Marshaller marshaller = new Jaxb2Marshaller();
+    marshaller.setContextPath("toby.service.sql");
+    return marshaller;
+  }
 
 }

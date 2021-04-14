@@ -308,8 +308,233 @@ SQL을 DAO에서 분리하면 더 좋겠다.
           </details>
 
 ### 3. 서비스 추상화 적용
+1. OXM 서비스 추상화
+    - OXM?
+        - OXM(Object-XML Mapping) : XML과 자바 객체를 매핑해서 상호 변환해주는 기술
+        - OXM 기술 : Castor XML, JiBX, XmlBeans, Xstream
+        - 기능이 같은 여러 기술이 존재한다? -> 서비스 추상화
+    - OXM 서비스 인터페이스
+        - 스프링이 제공하는 OXM 추상화 서비스 인터페이스 : Marshaller, Unmarshaller
+    - JAXB 구현 테스트
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          // 빈 등록
+          @Bean
+          public Unmarshaller unmarshaller() {
+            Jaxb2Marshaller marshaller = new Jaxb2Marshaller();
+            marshaller.setContextPath("toby.service.sql");
+            return marshaller;
+          }
+          // 테스트
+          @RunWith(SpringRunner.class)
+          @SpringBootTest
+          public class OxmTest {          
+            @Autowired
+            private Unmarshaller unmarshaller;          
+            @Test
+            public void unmarshallSqlMap() throws IOException {
+              StreamSource source = new StreamSource(getClass().getResourceAsStream("/sql/sql-map.xml"));
+              Sqlmap sqlMap = (Sqlmap) unmarshaller.unmarshal(source);
+              List sqlList = sqlMap.getSql();
+              assertThat(sqlList.size()).isEqualTo(6);
+              assertThat(sqlList.get(0).getKey()).isEqualTo("userAdd");
+              assertThat(sqlList.get(0).getValue()).isEqualTo("insert into users(id, name, password, level, login, recommend, email) values(?, ?, ?, ?, ?, ?, ?)");
+            }          
+          }
+          </pre>
+    - Castor 구현 테스트
+        - 한참 찾아보다가 4.3.13에서 deprecated됐다는 내용 찾음
+        - ```
+          Deprecated. 
+          as of Spring Framework 4.3.13, due to the lack of activity on the Castor project
+          ```
+2. OXM 서비스 추상화 적용
+    - 멤버 클래스를 참조하는 통합 클래스
+        - <details markdown="1">
+          <summary>OxmSqlService 코드 접기/펼치기</summary>
+          public class OxmSqlService implements SqlService {          
+            private SqlRegistry sqlRegistry = new HashMapSqlRegistry();          
+            public void setSqlRegistry(SqlRegistry sqlRegistry) {
+              this.sqlRegistry = sqlRegistry;
+            }          
+            public void setUnmarshaller(Unmarshaller unmarshaller) {
+              this.oxmSqlReader.setUnmarshaller(unmarshaller);
+            }          
+            public void sqlmapFile(String sqlmapFile) {
+              this.oxmSqlReader.setSqlmapFile(sqlmapFile);
+            }          
+            @PostConstruct
+            public void loadSql() {
+              this.oxmSqlReader.read(this.sqlRegistry);
+            }          
+            public String getSql(String key) throws SqlRetrievalFailureException {
+              try {
+                return this.sqlRegistry.findSql(key);
+              } catch (SqlNotFoundException e) {
+                throw new SqlRetrievalFailureException(e.getMessage(), e.getCause());
+              }
+            }          
+            private final OxmSqlReader oxmSqlReader = new OxmSqlReader();          
+            @Setter
+            private class OxmSqlReader implements SqlReader {
+              private Unmarshaller unmarshaller;
+              private static final String DEFAULT_SQLMAP_FILE = "/sql/sql-map.xml";
+              private String sqlmapFile = DEFAULT_SQLMAP_FILE;          
+              @Override
+              public void read(SqlRegistry sqlRegistry) {
+                try {
+                  StreamSource source = new StreamSource(getClass().getResourceAsStream(sqlmapFile));
+                  Sqlmap sqlMap = (Sqlmap) unmarshaller.unmarshal(source);
+                  sqlMap.getSql().forEach((sql) -> sqlRegistry.registerSql(sql.getKey(), sql.getValue()));
+                } catch (IOException e) {
+                  throw new RuntimeException(e);
+                }
+              }
+            }          
+          }
+          <pre>
+          </pre>
+          </details>
+        - <details markdown="1">
+          <summary>SqlService bean 코드 접기/펼치기</summary>
+          @Bean
+          public SqlService sqlService() {
+            OxmSqlService sqlService = new OxmSqlService();
+            sqlService.setUnmarshaller(unmarshaller());
+            return sqlService;
+          }
+          @Bean
+          public Unmarshaller unmarshaller() {
+            Jaxb2Marshaller marshaller = new Jaxb2Marshaller();
+            marshaller.setContextPath("toby.service.sql");
+            return marshaller;
+          }
+          <pre>
+          </pre>
+          </details>
+    - 위임을 이용한 BaseSqlService의 재사용
+        - loadSql(), getSql() 메서드 중복이 있다(OxmSqlService, DefaultSqlService)
+        - 구현 로직은 BaseSqlService에만 두는 방식으로 변경해본다.
+        - 관련 로직이 변경되면 BaseSqlService만 수정하면 된다.
+        - <details markdown="1">
+          <summary>수정된 OxmSqlService 코드 접기/펼치기</summary>
+          <pre>
+          public class OxmSqlService implements SqlService {
+            private final BaseSqlService baseSqlService = new BaseSqlService();
+            ...
+            @PostConstruct
+            public void loadSql() {
+              this.baseSqlService.setSqlReader(this.oxmSqlReader);
+              this.baseSqlService.setSqlRegistry(this.sqlRegistry);
+              this.baseSqlService.loadSql();
+            }
+            public String getSql(String key) throws SqlRetrievalFailureException {
+              return this.baseSqlService.getSql(key);
+            }
+            ...
+          }
+          </pre>
+          </details>
+3. 리소스 추상화
+    - 문제점
+        - 클래스패스에 존재하는 파일만 사용할 수 있다.
+        - 해결방법은?
+    - 리소스
+        - 스프링은 자바의 리소스 접근 API를 추상화해서 Resource라는 추상화 인터페이스를 정의했다.
+        - 스프링의 거의 모든 API에서 외부 리소스 정보가 필요할 때 Resource 추상화를 이용한다.
+        - 하지만 Resource는 빈이 아니라 값으로 취급된다.
+    - 리소스 로더
+        - 접두어를 이용해 Resource 객체를 선언하는 방법
+        - 접두어 -> file:, classpath:, 없음, http:
+    - Resource를 이용해 XML 파일 가져오기
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          public class OxmSqlService implements SqlService {          
+            private Resource sqlmap = new ClassPathResource("/sql/sql-map.xml", UserDao.class);          
+            public void setSqlmap(Resource sqlmap) {
+              this.sqlmap = sqlmap;
+            }
+            ...
+            @Setter
+            private class OxmSqlReader implements SqlReader {
+              ...
+              public void read(SqlRegistry sqlRegistry) {
+                try {
+                  StreamSource source = new StreamSource(sqlmap.getInputStream());
+                  ...
+                } catch (IOException e) {
+                  throw new RuntimeException(sqlmap.getFilename() + "을 가져올 수 없습니다.", e);
+                }
+              }
+            }
+          }
+          </pre>
+          </details>
 ### 4. 인터페이스 상속을 통한 안전한 기능확장
+1. DI와 기능의 확장
+    - DI를 의식하는 설계
+        - 적절한 책임에 따라 객체를 분리해줘야 한다.
+        - 항상 의존 객체는 자유롭게 확장될 수 있다는 점을 염두해야 한다.
+        - DI란 결국 미래를 프로그래밍 하는 것이다.
+    - DI와 인터페이스 프로그래밍
+        - 가능한 한 인터페이스를 사용해서 느슨하게 연결돼야 한다.
+        - ```
+          이유
+          1. 다형성을 얻기 위해 : 여러 개의 구현을 바꿔가며 사용할 수 있게 하는 것.
+          2. 인터페이스 분리 원칙을 통해 클라이언트와 의존 객체 간 관계를 명확하게 해줄 수 있기 때문
+          ```
+2. 인터페이스 상속
+    - 인터페이스 분리 원칙이 주는 장점 : 모든 클라이언트가 자신의 관심에 따른 접근 방식을 불필요한 간섭 없이 유지할 수 있다.
+    - SqlRegistry에 이미 등록된 SQL을 변경할 수 있는 기능을 넣어서 확장하고싶을 때? -> SqlRegistry를 상속받는 인터페이스를 정의한다.
+    - 잘 적용된 DI는 잘 설계된 객체 의존관계에 달려있다.
+    - DI와 객체지향 설계는 서로 밀접한 관계를 맺고 있다.
+    - ```
+      public interface UpdatableSqlRegistry extends SqlRegistry {
+        void updateSql(String key, String sql) throws SqlUpdateFailureException;
+        void updateSql(Map<String, String> sqlmap) throws SqlUpdateFailureException;
+      }
+      ```
+    - ```
+      @Slf4j
+      public class MyUpdatableSqlRegistry implements UpdatableSqlRegistry {
+        public void updateSql(String key, String sql) throws SqlUpdateFailureException { log.info("update sql. key : {}, value : {}", key, sql); }
+        public void updateSql(Map<String, String> sqlmap) throws SqlUpdateFailureException { log.info("update sql. sqlmap : {}", sqlmap); }
+        private Map<String, String> sqlMap = new HashMap();
+        public void registerSql(String key, String sql) { sqlMap.put(key, sql); }
+        public String findSql(String key) throws SqlNotFoundException { ... }      
+      }
+      ```
+    - ```
+      // 빈 등록
+      @Bean
+      public SqlService sqlService() {
+        OxmSqlService sqlService = new OxmSqlService();
+        sqlService.setUnmarshaller(unmarshaller());
+        sqlService.setSqlRegistry(sqlRegistry());
+        return sqlService;
+      }      
+      @Bean
+      public SqlRegistry sqlRegistry() {
+        return new MyUpdatableSqlRegistry();
+      }
+      ```
 ### 5. DI를 이용해 다양한 구현 방법 적용하기
 ### 6. 스프링 3.1의 DI
 ### 7. 정리
 - 
+
+public class OxmSqlService implements SqlService {
+
+  private Resource sqlmap = new ClassPathResource("/sql/sql-map.xml", UserDao.class);
+
+  public void setSqlmap(Resource sqlmap) {
+    this.sqlmap = sqlmap;
+  }
+
+<details markdown="1">
+<summary>코드 접기/펼치기</summary>
+<pre>
+</pre>
+</details>
