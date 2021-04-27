@@ -961,7 +961,7 @@ SQL을 DAO에서 분리하면 더 좋겠다.
 2. 빈 스캐닝과 자동와이어링
     - @Autowired를 이용한 자동 와이어링
         - 스프링은 @Autowired가 붙은 메서드의 파라미터 타입을 보고 주입 가능한 타입의 빈을 모두 찾아서 한개면 넣어주고 두 개 이상이면 맞는 이름으로 넣어준다.
-        - 타입 -> 이름 -> 못찾으면 오류
+        - 타입으로 찾아보고 -> 타입 같으면 이름으로 찾아보고 -> 그래도 같으면 예외 발생
     - @Component를 이용한 자동 빈 등록
         - @Component가 붙은 클래스는 빈 스캐너를 통해 자동으로 빈으로 등록된다.
         - @ComponentScan 특정 패키지 아래에서만 찾도록 기준이 되는 패키지를 지정
@@ -975,6 +975,65 @@ SQL을 DAO에서 분리하면 더 좋겠다.
           @Component // 메타 애노테이션
           public @interface SnsConnector { ... }
           ```
+3. 컨텍스트 분리와 @Import
+    - 테스트용 컨텍스트 분리
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          @Configuration
+          public class TestAppContext {
+            @Bean
+            public UserService testUserService() {
+              return new TestUserServiceImpl();
+            }          
+            @Bean
+            public MailSender mailSender() {
+              return new DummyMailSender();
+            }
+            ...
+          }          
+          @ContextConfiguration(classes = TestAppContext.class)
+          public class UserServiceTest {
+            ...
+          }
+          </pre>
+          </details>
+    - @Import
+        - SQL서비스용 빈은? 독립적으로 이용하는게 좋아보인다.
+        - SqlServiceContext에 SQL 서비스 관련 빈을 정의
+        - 테스트 컨텍스트에서 @Import(SqlServiceContext.class)
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          @Configuration
+          @EnableTransactionManagement
+          @Import(SqlServiceContext.class)
+          public class TestAppContext {
+            ...
+          } 
+          </pre>
+          </details>
+4. 프로파일
+    - 만약 MailSender 빈이 운영용, 테스트용 두 개 생성된다면?
+    - @Profile과 @ActiveProfiles
+        - 프로파일을 정의해 두고 실행 시점에 어떤 프로파일의 빈 설정을 사용할지 지정할 수 있다.
+        - ```
+          @Configuration
+          @EnableTransactionManagement
+          @Import(SqlServiceContext.class)
+          @Profile("test")
+          public class TestAppContext {
+            ...
+          }
+          ```
+    - 컨테이너의 빈 등록 정보 확인
+    - 중첩 클래스를 이용한 프로파일 적용
+5. 프로퍼티 소스
+    - @PropertySource
+    - PropertySourcesPlaceholderConfigurer
+6. 빈 설정의 재사용과 @Enable*
+    - 빈 설정자
+    - @Enable* 애노테이션
 ### 7. 정리
 - 
 
