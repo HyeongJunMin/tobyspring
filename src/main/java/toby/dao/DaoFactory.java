@@ -5,9 +5,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 import org.springframework.oxm.Unmarshaller;
-import toby.service.sql.*;
 import org.springframework.oxm.jaxb.Jaxb2Marshaller;
+import toby.service.sql.*;
 
 import javax.sql.DataSource;
 import java.sql.Driver;
@@ -64,9 +66,30 @@ public class DaoFactory {
 //    return new HashMapSqlRegistry();
 //  }
 
+//  @Bean
+//  public SqlRegistry sqlRegistry() {
+//    return new MyUpdatableSqlRegistry();
+//  }
+
+//  @Bean
+//  public SqlRegistry sqlRegistry() {
+//    return new ConcurrentHashMapSqlRegistry();
+//  }
+
   @Bean
   public SqlRegistry sqlRegistry() {
-    return new MyUpdatableSqlRegistry();
+    EmbeddedDBSqlRegistry sqlRegistry = new EmbeddedDBSqlRegistry();
+    sqlRegistry.setDataSource(embeddedDatabase());
+    return sqlRegistry;
+  }
+
+  @Bean
+  public DataSource embeddedDatabase() {
+    return new EmbeddedDatabaseBuilder()
+            .setName("embeddedDatabase")
+            .setType(EmbeddedDatabaseType.HSQL)
+            .addScript("/sql/embedded-schema.sql")
+            .build();
   }
 
   @Bean
@@ -114,5 +137,13 @@ public class DaoFactory {
     marshaller.setContextPath("toby.service.sql");
     return marshaller;
   }
+
+//  @Bean
+//  public EmbeddedDatabase embeddedDatabase() {
+//    return new EmbeddedDatabaseBuilder()
+//            .setType(EmbeddedDatabaseType.HSQL)
+//            .addScript("/toby/service/sql/embedded-schema.sql")
+//            .build();
+//  }
 
 }

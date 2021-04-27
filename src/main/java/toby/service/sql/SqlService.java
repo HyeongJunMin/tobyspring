@@ -3,6 +3,7 @@ package toby.service.sql;
 import toby.common.exception.SqlRetrievalFailureException;
 
 public interface SqlService {
+  String a = null;
   public static final String USER_ADD = "userAdd";
   public static final String USER_GET = "userGet";
   public static final String USER_GET_ALL = "userGetAll";

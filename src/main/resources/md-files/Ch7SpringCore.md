@@ -524,8 +524,440 @@ SQL을 DAO에서 분리하면 더 좋겠다.
       }
       ```
 ### 5. DI를 이용해 다양한 구현 방법 적용하기
+1. ConcurrentHashMap을 이용한 수정 가능 SQL 레지스트리
+    - ConcurrentHashMap은 데이터 조작 시 전체 데이터에 대해 락을 걸지 않고 조회는 락을 전혀 사용하지 않는다.
+    - 수정 가능 SQL 레지스트리 테스트
+        - 동시성에 대한 테스트는 배제
+        - ```
+          // ConcurrentHashMap을 이용한 SQL 레지스트리 테스트
+          public class ConcurrentHashMapSqlRegistryTest {          
+            UpdatableSqlRegistry updatableSqlRegistry;          
+            private final String KEY_1 = "KEY1";
+            private final String KEY_2 = "KEY2";
+            private final String KEY_3 = "KEY3";
+            private final String SQL_1 = "SQL1";
+            private final String SQL_2 = "SQL2";
+            private final String SQL_3 = "SQL3";
+                    
+            @Before
+            public void setUp() throws Exception {
+              updatableSqlRegistry = new ConcurrentHashMapSqlRegistry();
+              updatableSqlRegistry.registerSql(KEY_1, SQL_1);
+              updatableSqlRegistry.registerSql(KEY_2, SQL_2);
+              updatableSqlRegistry.registerSql(KEY_3, SQL_3);
+            }
+          
+            @Test
+            public void find() {
+              checkFindResult(SQL_1, SQL_2, SQL_3);
+            }
+          
+            private void checkFindResult(String expected1, String expected2, String expected3) {
+              assertThat(updatableSqlRegistry.findSql(KEY_1)).isEqualTo(expected1);
+              assertThat(updatableSqlRegistry.findSql(KEY_2)).isEqualTo(expected2);
+              assertThat(updatableSqlRegistry.findSql(KEY_3)).isEqualTo(expected3);
+            }
+          
+            @Test(expected = SqlNotFoundException.class)
+            public void unknownKey() {
+              updatableSqlRegistry.findSql("unknown");
+            }
+          
+            @Test
+            public void updateSingle() {
+              String modifiedSql = "MODIFIED";
+              updatableSqlRegistry.updateSql(KEY_2, modifiedSql);
+              checkFindResult(SQL_1, modifiedSql, SQL_3);
+            }
+          
+            @Test
+            public void updateMulti() {
+              String modifiedSql1 = "modified1";
+              String modifiedSql2 = "modified2";
+              Map<String, String> sqlMap = new HashMap();
+              sqlMap.put(KEY_1, modifiedSql1);
+              sqlMap.put(KEY_3, modifiedSql2);
+              updatableSqlRegistry.updateSql(sqlMap);
+              checkFindResult(modifiedSql1, SQL_2, modifiedSql2);
+            }
+          
+            @Test(expected = SqlUpdateFailureException.class)
+            public void updateWithNotExistingKey() {
+              updatableSqlRegistry.updateSql("notExistingKey", "modified2");
+            }
+          
+          }
+          ```
+    - 수정 가능 SQL 레지스트리 구현
+        - ```
+          public class ConcurrentHashMapSqlRegistry implements UpdatableSqlRegistry {
+          
+            private final ConcurrentHashMap<String, String> sqlMap = new ConcurrentHashMap<>();
+          
+            @Override
+            public String findSql(String key) throws SqlNotFoundException {
+              String sql = sqlMap.get(key);
+              if (sql == null) {
+                throw new SqlNotFoundException("not found. key : " + key);
+              }
+              return sql;
+            }
+          
+            @Override
+            public void registerSql(String key, String value) {
+              sqlMap.put(key, value);
+            }
+          
+            @Override
+            public void updateSql(String key, String newValue) throws SqlUpdateFailureException {
+              String foundSql = sqlMap.get(key);
+              if (foundSql == null) {
+                throw new SqlUpdateFailureException();
+              }
+              sqlMap.put(key, newValue);
+            }
+          
+            @Override
+            public void updateSql(Map<String, String> sqlMap) throws SqlUpdateFailureException {
+              sqlMap.forEach((k, v) -> updateSql(k, v));
+            }
+          
+          }
+          ```
+2. 내장형 데이터베이스를 이용한 SQL 레지스트리 만들기
+    - 스프링의 내장형 DB 지원 기능
+        - 내장형 DB : 애플리케이션과 함께 시작되고 종료되는 DB
+        - EmbeddedDatabase 인터페이스 제공        
+    - 내장형 DB 빌더 학습 테스트
+        - SimpleJdbcTemplate deprecated -> JdbcTemplate 사용
+        - <details markdown="1">
+          <summary>내장 DB DDL, DML 접기/펼치기</summary>
+          <pre>
+          // embedded-embedded-schema.sql
+          CREATE TABLE SQLMAP (
+            KEY_ VARCHAR(100) PRIMARY KEY,
+            SQL_ VARCHAR(100) NOT NULL
+          );
+          // embedded-data.sql
+          INSERT INTO SQLMAP(KEY_, SQL_) values ('KEY1', 'SQL1');
+          INSERT INTO SQLMAP(KEY_, SQL_) values ('KEY2', 'SQL2');
+          </pre>
+          </details>
+        - ```
+          public class EmbeddedDBTest {
+          
+            EmbeddedDatabase db;
+            JdbcTemplate jdbcTemplate;
+          
+            @Before
+            public void setUp() {
+              db = new EmbeddedDatabaseBuilder()
+                      .setType(EmbeddedDatabaseType.HSQL)
+                      .addScript("/embedded-embedded-schema.sql")
+                      .addScript("/embedded-data.sql")
+                      .build();
+              jdbcTemplate = new JdbcTemplate(db);
+            }
+          
+            @After
+            public void tearDown() {
+              // 테스트 후 DB 종료
+              db.shutdown();
+            }
+          
+            @Test
+            public void initData() {
+              Integer sqlmapCount = jdbcTemplate.queryForObject("select count(*) from sqlmap", Integer.class);
+              assertThat(sqlmapCount).isEqualTo(2);
+              List<Map<String, Object>> list = jdbcTemplate.queryForList("select * from sqlmap order by key_");
+              Map<String, Object> firstObject = list.get(0);
+              assertThat(firstObject.get("key_")).isEqualTo("KEY1");
+              assertThat(firstObject.get("sql_")).isEqualTo("SQL1");
+              Map<String, Object> secondObject = list.get(1);
+              assertThat(secondObject.get("key_")).isEqualTo("KEY2");
+              assertThat(secondObject.get("sql_")).isEqualTo("SQL2");
+            }
+          
+            @Test
+            public void insert() {
+              jdbcTemplate.update("insert into sqlmap(key_, sql_) values(?, ?)", "KEY3", "SQL3");
+              Integer sqlmapCount = jdbcTemplate.queryForObject("select count(*) from sqlmap", Integer.class);
+              assertThat(sqlmapCount).isEqualTo(3);
+            }
+          
+          }
+          ```
+    - 내장형 DB를 이용한 SQL 레지스트리 만들기
+        - EmbeddedDatabaseBuilder는 직접 빈으로 등록한다고 바로 사용할 수 있는게 아니다.
+        - 적절한 메서드를 호출해주는 초기화 코드가 필요하다.
+        - 초기화 코드가 필요하다면 팩토리 빈으로 만드는 것이 좋다.
+        - ```
+          public class EmbeddedDBSqlRegistry implements UpdatableSqlRegistry {
+          
+            JdbcTemplate jdbcTemplate;
+          
+            public void setDataSource(DataSource dataSource) {
+              this.jdbcTemplate = new JdbcTemplate(dataSource);
+            }
+          
+            public void registerSql(String key, String sql) {
+              jdbcTemplate.update("insert into sqlmap(key_, sql_) values(?, ?)", key, sql);
+            }
+          
+            public String findSql(String key) throws SqlNotFoundException {
+              try {
+                return jdbcTemplate.queryForObject("select sql_ from sqlmap where key_ = ?", String.class, key);
+              } catch (EmptyResultDataAccessException e) {
+                throw new SqlNotFoundException("not found. key : " + key);
+              }
+            }
+          
+            public void updateSql(String key, String sql) throws SqlUpdateFailureException {
+              int affected = jdbcTemplate.update("update sqlmap set sql_ = ? where key_ = ?", sql, key);
+              if (affected == 0) {
+                throw new SqlUpdateFailureException("update failed. key : " + key);
+              }
+            }
+          
+            public void updateSql(Map<String, String> sqlmap) throws SqlUpdateFailureException {
+              sqlmap.forEach((k, v) -> updateSql(k, v));
+            }
+          }
+          ```
+    - UpdatableSqlRegistry 테스트 코드의 재사용
+        - 테스트코드를 상속구조로 설정
+        - 변경된 ConcurrentHashMapSqlRegistryTest
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          public class ConcurrentHashMapSqlRegistryTest extends AbstractUpdatableSqlRegistryTest {          
+            protected UpdatableSqlRegistry createUpdatableSqlRegistry() {
+              return new ConcurrentHashMapSqlRegistry();
+            }          
+          }
+          </pre>
+          </details>
+        - EmbeddedDBSqlRegistry 테스트
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          public class EmbeddedDBSqlRegistryTest extends AbstractUpdatableSqlRegistryTest {
+            EmbeddedDatabase db;          
+            @Override
+            protected UpdatableSqlRegistry createUpdatableSqlRegistry() {
+              db = new EmbeddedDatabaseBuilder()
+                      .setType(EmbeddedDatabaseType.HSQL)
+                      .addScript("/embedded-embedded-schema.sql")
+                      .build();          
+              EmbeddedDBSqlRegistry sqlRegistry = new EmbeddedDBSqlRegistry();
+              sqlRegistry.setDataSource(db);          
+              return sqlRegistry;
+            }          
+            @After
+            public void tearDown() {
+              db.shutdown();
+            }          
+          }
+          </pre>
+          </details>
+    - XML 설정을 통한 내장형 DB의 생성과 적용
+        - xml설정은 계속 안따라해서 팩토리빈으로 등록
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
+          @Bean
+          public SqlService sqlService() {
+            OxmSqlService sqlService = new OxmSqlService();
+            sqlService.setUnmarshaller(unmarshaller());
+            sqlService.setSqlRegistry(sqlRegistry());
+            return sqlService;
+          }
+          @Bean
+          public SqlRegistry sqlRegistry() {
+            EmbeddedDBSqlRegistry sqlRegistry = new EmbeddedDBSqlRegistry();
+            sqlRegistry.setDataSource(embeddedDatabase());
+            return sqlRegistry;
+          }          
+          @Bean(name = "embeddedDatabase")
+          public DataSource embeddedDatabase() {
+            EmbeddedDatabaseFactoryBean factoryBean = new EmbeddedDatabaseFactoryBean();
+            factoryBean.setDatabaseType(EmbeddedDatabaseType.HSQL);
+            ResourceDatabasePopulator databasePopulator = new ResourceDatabasePopulator();
+            Resource resource = new ClassPathResource("/sql/embedded-schema.sql");
+            databasePopulator.addScript(resource);
+            factoryBean.setDatabasePopulator(databasePopulator);
+            factoryBean.afterPropertiesSet();
+            return factoryBean.getObject();
+          }
+          </pre>
+          </details>
+3. 트랜잭션 적용
+    - EmbeddedRegistry를 적용했다.
+        - EmbeddedRegistry는 빈번한 조회 중에도 데이터가 깨지는 일 없이 안전하게 SQL을 수정하도록 보장해준다.
+        - 여러 개의 SQL을 변경하는 중 존재하지 않는 키가 발견돼서 예외가 발생한다면?
+        - 단순 JdbcTemplate을 사용하기 때문에 트랜잭션이 적용되어있지 않다.
+        - 내장형 DB는 DB 자체가 기본적으로 트랜잭션 기반의 작업에 충실하게 설계돼있다.
+    - 다중 SQL 수정에 대한 트랜잭션 테스트
+        - ```
+          public class EmbeddedDBSqlRegistryTest extends AbstractUpdatableSqlRegistryTest {
+            ...
+            @Test
+            public void transactionalUpdate() {
+              checkFindResult(SQL_1, SQL_2, SQL_3);
+              Map<String, String> sqlmap = new HashMap();
+              sqlmap.put(KEY_1, "modified1");
+              sqlmap.put("unknownKey", "modified2");          
+              try {
+                updatableSqlRegistry.updateSql(sqlmap);
+                fail();
+              } catch (SqlUpdateFailureException e) {
+                // ignore
+              }
+              checkFindResult(SQL_1, SQL_2, SQL_3);
+            }          
+          }
+          ```
+    - 코드를 이용한 트랜잭션 적용
+        - 간단히 TransactionTemplate 활용
+        - ```
+          public class EmbeddedDBSqlRegistry implements UpdatableSqlRegistry {            
+            TransactionTemplate transactionTemplate;          
+            public void setDataSource(DataSource dataSource) {
+              this.jdbcTemplate = new JdbcTemplate(dataSource);
+              this.transactionTemplate = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+            }
+            ...
+            public void updateSql(Map<String, String> sqlmap) throws SqlUpdateFailureException {
+              transactionTemplate.execute(new TransactionCallbackWithoutResult() {
+                @Override
+                protected void doInTransactionWithoutResult(TransactionStatus status) {
+                  sqlmap.forEach((k, v) -> updateSql(k, v));
+                }
+              });
+            }
+          }
+          ```
 ### 6. 스프링 3.1의 DI
+- 자바 언어의 변화와 스프링 : 대표적인 두 가지 변화
+    - 스프링은 점차 애노테이션 메타정보 활용을 늘리고 미리 정해진 정책과 관례를 활용하는 방식을 적극 도입하고 있다.
+    - 이 절에서는 최신 스타일로 바꾸는 과정을 설명한다.
+    1. 애노테이션의 메타정보 활용
+        - 컴파일된 클래스파일은 다른 자바 코드에 의해 데이터처럼 취급되기도 한다.
+        - 애노테이션은 옵션에 따라 컴파일된 클래스에 존재하거나 애플리케이션이 동작할 때 메모리에 로딩되기도 한다.
+        - 애노테이션은 자바 코드가 실행되는 데 직접 참여하지 못한다.
+        - 애노테이션 활용이 늘어난 이유? 스프링 구조에 잘 어울렸음(자바 코드 + IoC방식 + 프레임워크의 메타정보)
+        - 애노테이션 방식, XML 방식 각각의 장점
+        - ```
+          애노테이션 장점 : 
+           - 작성해야 하는 코드량이 적고 직관적이다.
+          XML 장점 : 
+           - 내용이 변경되어도 빌드가 필요 없다.
+          ```
+    2. 정책과 관례를 이용한 프로그래밍
+        - 반복되는 부분을 관례화하면 더 많은 내용을 생략할 수 있지만 학습 비용이 늘어날 수 있다.
+        - @Transactional 처럼
+        
 1. 자바 코드를 이용한 빈 설정
+    - 테스트 컨텍스트의 변경
+        - 최종 목적 : XML을 더 이상 사용하지 않게 하는 것
+        - @ContextConfiguration(classes = TestApplicationContext.class)
+    - <context:annotation-config /> 제거
+    - <bean>의 전환
+    - 전용 태그 전환
+        - <jdbc-embedded-database/> : embeddedDatabase 빈 등록
+        - <tx:annotation-driven/> : 클래스에 @EnableTransactionManagement 어노테이션 추가
+    - 테스트 컨텍스트 코드
+        - ```
+          @Configuration
+          @EnableTransactionManagement
+          public class TestApplicationContext {
+          
+            private String dataSourceUrl = "jdbc:h2:tcp://localhost/~/test";
+            private String dataSourceDriverClass = "org.h2.Driver";
+            private String dbUsername = "sa";
+            private String dbPassword = "";
+          
+            @Autowired
+            private SqlService sqlService;
+          
+            @Bean
+            public DataSource dataSource() {
+              SimpleDriverDataSource dataSource = new SimpleDriverDataSource();
+              try {
+                dataSource.setDriverClass((Class<? extends Driver>) Class.forName(dataSourceDriverClass));
+              } catch (Exception e) { }
+              dataSource.setUrl(dataSourceUrl);
+              dataSource.setUsername(dbUsername);
+              dataSource.setPassword(dbPassword);
+              return dataSource;
+            }
+          
+            @Bean
+            public PlatformTransactionManager transactionManager() {
+              return new DataSourceTransactionManager(dataSource());
+            }
+          
+            @Bean
+            public UserDao userDao() {
+              UserDaoJdbc userDaoJdbc = new UserDaoJdbc(dataSource());
+              userDaoJdbc.setSqlService(sqlService);
+              return userDaoJdbc;
+            }
+          
+            @Bean
+            public UserService userService() {
+              UserServiceImpl userService = new UserServiceImpl();
+              userService.setUserDao(userDao());
+              userService.setMailSender(mailSender());
+              return userService;
+            }
+          
+            @Bean
+            public UserService testUserService() {
+              TestUserServiceImpl testUserService = new TestUserServiceImpl();
+              testUserService.setUserDao(userDao());
+              testUserService.setMailSender(mailSender());
+              return testUserService;
+            }
+          
+            @Bean
+            public MailSender mailSender() {
+              return new DummyMailSender();
+            }
+          
+            @Bean
+            public SqlService sqlService() {
+              OxmSqlService sqlService = new OxmSqlService();
+              sqlService.setUnmarshaller(unmarshaller());
+              sqlService.setSqlRegistry(sqlRegistry());
+              return sqlService;
+            }
+          
+            @Bean
+            public Unmarshaller unmarshaller() {
+              Jaxb2Marshaller marshaller = new Jaxb2Marshaller();
+              marshaller.setContextPath("toby.service.sql");
+              return marshaller;
+            }
+          
+            @Bean
+            public SqlRegistry sqlRegistry() {
+              EmbeddedDBSqlRegistry sqlRegistry = new EmbeddedDBSqlRegistry();
+              sqlRegistry.setDataSource(embeddedDatabase());
+              return sqlRegistry;
+            }
+          
+            @Bean
+            public DataSource embeddedDatabase() {
+              return new EmbeddedDatabaseBuilder()
+                      .setName("embeddedDatabase")
+                      .setType(EmbeddedDatabaseType.HSQL)
+                      .addScript("/embedded-schema.sql")
+                      .build();
+            }
+          
+          }
+          ```
 2. 빈 스캐닝과 자동와이어링
     - @Autowired를 이용한 자동 와이어링
         - 스프링은 @Autowired가 붙은 메서드의 파라미터 타입을 보고 주입 가능한 타입의 빈을 모두 찾아서 한개면 넣어주고 두 개 이상이면 맞는 이름으로 넣어준다.
@@ -545,14 +977,6 @@ SQL을 DAO에서 분리하면 더 좋겠다.
           ```
 ### 7. 정리
 - 
-
-public class OxmSqlService implements SqlService {
-
-  private Resource sqlmap = new ClassPathResource("/sql/sql-map.xml", UserDao.class);
-
-  public void setSqlmap(Resource sqlmap) {
-    this.sqlmap = sqlmap;
-  }
 
 <details markdown="1">
 <summary>코드 접기/펼치기</summary>

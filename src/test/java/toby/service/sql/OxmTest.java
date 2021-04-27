@@ -3,9 +3,10 @@ package toby.service.sql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.oxm.Unmarshaller;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringRunner;
+import toby.common.TestApplicationContext;
 
 import javax.xml.transform.stream.StreamSource;
 import java.io.IOException;
@@ -14,7 +15,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @RunWith(SpringRunner.class)
-@SpringBootTest
+@ContextConfiguration(classes = TestApplicationContext.class)
 public class OxmTest {
 
   @Autowired
