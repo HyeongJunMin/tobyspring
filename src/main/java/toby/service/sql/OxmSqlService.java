@@ -4,7 +4,6 @@ import lombok.Setter;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.oxm.Unmarshaller;
-import toby.common.exception.SqlNotFoundException;
 import toby.common.exception.SqlRetrievalFailureException;
 import toby.dao.UserDao;
 
@@ -58,7 +57,7 @@ public class OxmSqlService implements SqlService {
     @Override
     public void read(SqlRegistry sqlRegistry) {
       try {
-        // StreamSource source = new StreamSource(getClass().getResourceAsStream(sqlmapFile));
+//         StreamSource source = new StreamSource(getClass().getResourceAsStream(sqlmapFile));
         StreamSource source = new StreamSource(sqlmap.getInputStream());
         Sqlmap sqlMap = (Sqlmap) unmarshaller.unmarshal(source);
         sqlMap.getSql().forEach((sql) -> sqlRegistry.registerSql(sql.getKey(), sql.getValue()));

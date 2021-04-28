@@ -1,8 +1,10 @@
 package toby.common;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.PropertySource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
@@ -28,12 +30,20 @@ import java.sql.Driver;
 
 @Configuration
 @EnableTransactionManagement
+@PropertySource("/application.properties")
 public class TestApplicationContext {
 
-  private String dataSourceUrl = "jdbc:h2:tcp://localhost/~/test";
-  private String dataSourceDriverClass = "org.h2.Driver";
-  private String dbUsername = "sa";
-  private String dbPassword = "";
+  @Value("${spring.datasource.url}")
+  private String dataSourceUrl;
+
+  @Value("${spring.datasource.driver-class-name}")
+  private String dataSourceDriverClass;
+
+  @Value("${spring.datasource.username}")
+  private String dbUsername;
+
+  @Value("${spring.datasource.password}")
+  private String dbPassword;
 
   @Autowired
   private SqlService sqlService;

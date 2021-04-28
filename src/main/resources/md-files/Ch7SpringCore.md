@@ -1005,6 +1005,12 @@ SQL을 DAO에서 분리하면 더 좋겠다.
         - <details markdown="1">
           <summary>코드 접기/펼치기</summary>
           <pre>
+          
+          </pre>
+          </details>
+        - <details markdown="1">
+          <summary>코드 접기/펼치기</summary>
+          <pre>
           @Configuration
           @EnableTransactionManagement
           @Import(SqlServiceContext.class)
@@ -1017,6 +1023,7 @@ SQL을 DAO에서 분리하면 더 좋겠다.
     - 만약 MailSender 빈이 운영용, 테스트용 두 개 생성된다면?
     - @Profile과 @ActiveProfiles
         - 프로파일을 정의해 두고 실행 시점에 어떤 프로파일의 빈 설정을 사용할지 지정할 수 있다.
+        - @ActiveProfiles에 선언된 TestAppContext의 빈 설정은 포함되고, 그 외 빈 설정은 무시한다.(production) 
         - ```
           @Configuration
           @EnableTransactionManagement
@@ -1025,20 +1032,154 @@ SQL을 DAO에서 분리하면 더 좋겠다.
           public class TestAppContext {
             ...
           }
+          
+          @RunWith(SpringJUnit4ClassRunner.class)
+          @ActiveProfiles("test")
+          @ContextConfiguration(classes = AppContext.class)
+          public class UserServiceTest { ... }
           ```
     - 컨테이너의 빈 등록 정보 확인
+        - 지정한 프로파일이 잘 적용됐는지 확인할 수 있는 방법은?
+        - 스프링 컨테이너는 모두 BeanFactory라는 인터페이스를 구현하고 있다.
+        - DefaultListableBeanFactory 객체를 주입받으면 등록된 빈들을 확인할 수 있다.
+        - ```
+          @Autowired private DefaultListableBeanFactory beanFactory;
+          @Test
+          public void beans() {
+            for (String name : beanFactory.getBeanDefinitionNames()) {
+              log.info("bean name : {}", name);
+            }
+          }
+          ```
     - 중첩 클래스를 이용한 프로파일 적용
+        - 파일이 많아지면 전체 구성을 살펴보거나 프로파일마다 어떤 구성인지 비교하기도 어렵다.
+        - AppContext 안에 중첩 클래스로 만들되, 각각 독립적으로 사용될 수 있도록 스태틱 클래스로 만든다.
+        - <details markdown="1">
+          <summary>AppContext 코드 접기/펼치기</summary>
+          <pre>
+          @Configuration
+          @EnableTransactionManagement
+          @ComponentScan(basePackages = "toby.common.config")
+          @Import({AppContext.ProductionAppContext.class
+                  , AppContext.TestAppContext.class
+                  , SqlServiceContext.class
+          })
+          public class AppContext {      
+            @Bean
+            public DataSourceTransactionManager transactionManager() {
+              return new DataSourceTransactionManager(dataSource());
+            }          
+            @Configuration
+            @Profile("production")
+            @RequiredArgsConstructor
+            public static class ProductionAppContext {          
+              private final UserDao userDao;
+              private final PlatformTransactionManager transactionManager;          
+              @Bean
+              public MailSender mailSender() {
+                JavaMailSenderImpl javaMailSender = new JavaMailSenderImpl();
+                javaMailSender.setHost("localhost");
+                return javaMailSender;
+              }          
+              @Bean
+              public UserService userService() {
+                UserServiceImpl userService = new UserServiceImpl();
+                userService.setUserDao(userDao);
+                userService.setTransactionManager(transactionManager);
+                userService.setMailSender(mailSender());
+                return userService;
+              }          
+            }          
+            @Configuration
+            @Profile("test")
+            @RequiredArgsConstructor
+            public static class TestAppContext {          
+              private final UserDao userDao;          
+              @Bean
+              public UserService testUserService() {
+                TestUserServiceImpl testUserService = new TestUserServiceImpl();
+                testUserService.setUserDao(userDao);
+                testUserService.setMailSender(mailSender());
+                return testUserService;
+              }          
+              @Bean
+              public MailSender mailSender() {
+                return new DummyMailSender();
+              }          
+            }          
+          }
+          </pre>
+          </details>
 5. 프로퍼티 소스
+    - DB 연결정보는 아직 테스트환경에 종속되어있다... 나는 application.properties로 선언해놔서 무관
     - @PropertySource
+        - ```
+          // application.properties
+          spring.datasource.url=jdbc:h2:tcp://localhost/~/test
+          spring.datasource.username=sa
+          spring.datasource.password=
+          spring.datasource.driver-class-name=org.h2.Driver
+          db.driverclass=org.h2.Driver
+          public class DBConfig {
+            @Autowired private Environment env;
+            @Bean
+            public DataSource dataSource() {
+              env.getProperty("db.driverClass");
+            }
+          }
+          ```
     - PropertySourcesPlaceholderConfigurer
+        - ```
+          // 프로퍼티 소스를 이용한 치환자 설정용 빈
+          // SpringBoot에서는 필요없음
+          @Bean
+          public static PropertySourcesPlaceholderConfigurer placeholderConfigurer() {
+            return new PropertySourcesPlaceholderConfigurer();
+          }
+          ```
+        - ```
+          public class DBConfig {
+            @Value("${db.driverClass}")
+            private String driverClass; 
+            @Bean
+            public DataSource dataSource() {
+              ds.setDriverClass(driverClass);
+            }
+          }
+          ```
 6. 빈 설정의 재사용과 @Enable*
     - 빈 설정자
+         - SQL 서비스를 재사용 가능한 독립적인 모듈로 만들려면?
+         - UserDao 위치로 고정되어있는 SQL매핑파일의 위치를 직접 지정할 수 있도록 수정해주어야 한다.
+         - ```
+           @Bean
+           public SqlService sqlService() {
+             OxmSqlService sqlService = new OxmSqlService();
+             sqlService.setUnmarshaller(unmarshaller());
+             sqlService.setSqlRegistry(sqlRegistry());
+             sqlService.setSqlmap(new ClassPathResource("/sql/sql-map.xml", UserDao.class));
+             return sqlService;
+           }
+           ```
     - @Enable* 애노테이션
+        - ```
+          @Import(value = SqlServiceContext.class)
+          public @interface EnableSqlService {
+          }
+          ```
 ### 7. 정리
-- 
-
-<details markdown="1">
-<summary>코드 접기/펼치기</summary>
-<pre>
-</pre>
-</details>
+- 스프링 DI와 서비스 추상화 등을 응용해 새로운 SQL 서비스 기능을 설계하고 확장/발전했다.
+- 스프링이 제공하는 기능에만 만족하지 않고 스프링의 기반기술을 자유자재로 활용할 수 있도록 다양한 시도를 해야한다... 이제 왠만한건 다 있을텐데...?
+- 살펴본 내용들
+- ```
+  1. SQL처럼 변경될 수 있는 텍스트로 된 정보는 외부 리소스에 담아두고 사용하면 편리하다.
+  2. 성격이 다른 코드가 섞인 클래스는 인터페이스별로 분리하는게 좋다.
+  3. 자주 사용되는 의존 객체는 디폴트로 미리 정의해두면 편리하다.
+  4. XML과 객체 매핑은 스프링의 OXM 추상화 기능을 활용한다.
+  5. 특정 의존 객체를 고정시켜 기능을 특화하려면 멤버 클래스로 만드는 것이 편리하고 기존 기능과 중복은 위임을 통해 제거하는 것이 좋다.
+  6. 외부 파일이나 리소스를 사용하는 코드에서는 스프링의 리소스 추상화와 리소스 로더를 사용한다.
+  7. DI를 의식하면서 개발하면 객체지향 설계에 도움이 된다.
+  8. DI에는 인터페이스를 사용한다. 
+  9. 클라이언트에 따라 새로운 인터페이스를 만드는 방법이나 인터페이스를 상속하는 방법 두 가지를 사용할 수 있다.
+  10. 내장 DB를 사용할 때는 스프링의 내장형 DB추상화 기능과 전용 태그를 사용하면 편리하다.
+  ```

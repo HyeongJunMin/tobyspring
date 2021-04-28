@@ -8,6 +8,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.mail.MailException;
 import org.springframework.mail.MailSender;
@@ -43,6 +44,8 @@ import static toby.service.user.UserServiceImpl.RECOMMEND_COUNT_FOR_GOLD;
 
 @RunWith(SpringRunner.class)
 @ContextConfiguration(classes = TestApplicationContext.class)
+//@ContextConfiguration(classes = {AppContext.class, DaoFactory.class})
+//@ActiveProfiles("test")
 @Slf4j
 public class UserServiceTest {
 
@@ -51,6 +54,7 @@ public class UserServiceTest {
   @Autowired private PlatformTransactionManager transactionManager;
   @Autowired private MailSender mailSender;
   @Autowired private UserService testUserService;
+  @Autowired private DefaultListableBeanFactory beanFactory;
 
   private List<User> userList;
 
@@ -268,6 +272,13 @@ public class UserServiceTest {
     testUserService.deleteAll();
     testUserService.add(userList.get(3));
     testUserService.getAll();
+  }
+
+  @Test
+  public void beans() {
+    for (String name : beanFactory.getBeanDefinitionNames()) {
+      log.info("bean name : {}", name);
+    }
   }
 
   static class MockUserDao implements UserDao {
